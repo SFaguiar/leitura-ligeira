@@ -119,8 +119,12 @@ users:
 
 user_settings:                -- 1:1 com users
   user_id (unique),
-  wpm_focus, wpm_flow, chunk_size, font_size,
-  orp_enabled, nav_close_on_click, nav_pause_on_open,
+  active_mode ('focus'|'flow'),          -- último modo usado
+  wpm_focus, wpm_flow,                    -- WPM por modo
+  chunk_focus, chunk_flow,                -- palavras-por-vez por modo
+  font_focus, font_flow,                  -- fonte por modo (flash grande vs corpo de texto)
+  orp_enabled,                            -- só Foco
+  nav_snap_back_on_click, nav_pause_on_switch,  -- toggles remapeados p/ o modelo de modos
   theme, collect_stats,
   updated_at
 
@@ -245,6 +249,35 @@ GET        /documents/{id}/audio/{voice} # stream do áudio
   terminado" já é coberto por `status = 'lido'`, não precisa duplicar como
   campo de sessão.
 
+**2026-07-12 — deliberação profunda da Fase 3 (6ª rodada)**
+- **Arquitetura Foco/Fluxo = região que troca, não overlay.** A área de
+  leitura alterna flash (Foco) ↔ texto completo (Fluxo) pelo seletor, com
+  **um único conjunto de controles compartilhados** embaixo (scrubber,
+  contador, transporte, sliders). Reverte o modelo de overlay da Fase 2
+  (`nav-panel` `fixed inset:0`). Motivo (visão de longo prazo/LEAN): o
+  overlay duplicava o transporte (duas barras sincronizadas), escondia o
+  scrubber e o contador no Flow, e exigia remendo de histórico. A região-que-
+  troca elimina os três de uma vez. O motor (`rsvp.js`) já é agnóstico a
+  modo — a mudança é toda de apresentação + settings.
+- **"Voltar" nasce correto via histórico:** entrar no Fluxo empilha uma
+  entrada; o botão voltar do celular vai Fluxo→Foco→biblioteca (exatamente a
+  expectativa do usuário quando reportou o bug). Dissolve o backlog em vez de
+  remendar.
+- **Chunk é por modo** (`chunk_focus`/`chunk_flow`), como WPM e fonte.
+- **Fonte é por modo por natureza** (`font_focus`/`font_flow`) — flash gigante
+  vs corpo de texto, elementos DOM diferentes. Corrige o `font_size` único que
+  estava no schema por engano.
+- **Nomes traduzidos: Foco / Fluxo** (UI em português).
+- Sub-decisões do agente (registradas, sem objeção esperada): módulo único de
+  settings (hoje espalhados em ~6 pontos com 3 convenções — limpeza + preparo
+  p/ Fase 4); ORP oculto no Fluxo; `prefers-reduced-motion` desliga o
+  smooth-scroll; modo padrão = Foco; `wpm_flow` começa um pouco abaixo do
+  `wpm_focus` na 1ª vez; relógio do highlight fica plugável de leve (avanço do
+  ponteiro centralizado no motor) sem construir a abstração de áudio agora
+  (anti-over-engineering); os dois toggles do painel viram
+  `nav_snap_back_on_click` (clicar palavra no Fluxo volta pro Foco) e
+  `nav_pause_on_switch`.
+
 ---
 
 ## Questões em aberto (fechar antes das fases que dependem delas)
@@ -259,17 +292,18 @@ acima e as fases 4/5 abaixo.)*
 
 ---
 
-## Backlog imediato (entra na Fase 3)
+## Backlog imediato (resolvido pelo desenho da Fase 3)
 
-- **[bug] Botão voltar do Android com o painel aberto** volta para a
-  biblioteca em vez de fechar o painel. Correção: o painel ganha entrada
-  própria no histórico (`pushState` com flag de painel; `popstate` fecha o
-  painel primeiro). No modo Flow formal, "voltar" do leitor → biblioteca,
-  como hoje.
-- **[ajuste] Controles de leitura acessíveis no Flow/painel:** WPM, tamanho
-  da fonte e palavras-por-vez hoje só existem na tela do RSVP. O painel
-  precisa expô-los (seção compacta/recolhível junto ao transporte).
-- Ambos são parte do escopo da Fase 3 (abaixo) — não são itens soltos.
+Os dois itens de feedback abaixo deixam de ser correções pontuais e são
+**dissolvidos pela arquitetura de "região que troca"** decidida na 6ª rodada:
+
+- **[bug] Botão voltar do Android** ia pra biblioteca em vez de sair do Fluxo.
+  Com o modo empilhando histórico, "voltar" vira Fluxo→Foco→biblioteca
+  naturalmente — não precisa de remendo no overlay (que deixa de existir).
+- **[ajuste] Controles (WPM/fonte/chunk) acessíveis no Fluxo.** Com os
+  controles compartilhados embaixo da região que troca, eles já estão sempre
+  visíveis nos dois modos — não é uma seção extra no painel, é o mesmo
+  conjunto de controles.
 
 ---
 
@@ -299,22 +333,46 @@ acima e as fases 4/5 abaixo.)*
 > privado); (D) TTS quando leitura + conteúdo estão completos; (E)
 > enriquecimento por cima dos dados acumulados.
 
-#### [ ] Fase 3 — Leitura completa: modos Focus/Flow formais
-*Depende de: nada (só frontend). Desbloqueia: TTS (substrato pronto), sessões
-com campo `mode`.*
-- Seletor Focus/Flow explícito no leitor; modo ativo persistido.
-- Trocar de modo preserva ponteiro e estado de play (mesmo motor).
-- **WPM separado por modo** (`wpmFocus` / `wpmFlow`); slider mode-aware
-  (mostra e grava o valor do modo ativo).
-- **Flow destaca o chunk inteiro** (N palavras acesas, marca pula de N em N).
-- **Controles no Flow:** WPM, fonte e palavras-por-vez acessíveis do próprio
-  painel (backlog acima).
-- **Fix do botão voltar** com painel aberto (backlog acima).
-- Settings passam a ser acessados por **módulo único** (preparação para a
-  Fase 4 trocar o storage por servidor sem retrabalho).
-- ORP segue exclusivo do Focus.
-- Fonte do Flow independente da fonte do flash RSVP (tamanhos diferentes por
-  natureza — corpo de texto vs palavra gigante).
+#### [ ] Fase 3 — Leitura completa: modos Foco/Fluxo formais
+*Depende de: nada (só frontend). Desbloqueia: TTS (substrato/relógio pronto),
+sessões com campo `mode`, Fase 4 (módulo de settings).*
+Desenho fechado na 6ª rodada de deliberação (ver log de decisões).
+
+**Arquitetura — região que troca (não overlay):**
+- A área de leitura é uma **região única que alterna** entre o flash (Foco) e
+  o texto completo (Fluxo), controlada por um seletor **Foco / Fluxo**.
+- **Um só conjunto de controles compartilhados** embaixo da região: scrubber
+  com marcadores, contador vivo, transporte (rewind/play/forward), sliders.
+  Acaba a duplicação das duas barras de transporte da Fase 2.
+- Reestrutura o `nav-panel` (hoje `fixed inset:0`) para essa região —
+  reaproveitando texto/clique-pra-pular/auto-scroll já prontos, só que como
+  superfície de primeira classe, não overlay.
+- Trocar de modo preserva ponteiro e estado de play (o motor não sabe de
+  modo). Entrar no Fluxo **empilha histórico**; "voltar" vai Fluxo→Foco→
+  biblioteca — dissolve o bug do botão voltar.
+
+**Settings por modo (corrige o schema):**
+- Módulo **único** de get/set de settings (hoje espalhado em ~6 pontos com 3
+  convenções) — limpeza + ponto único para a Fase 4 redirecionar ao servidor.
+- **WPM, chunk e fonte são por modo** (`*_focus` / `*_flow`); os controles são
+  mode-aware (mostram e gravam o valor do modo ativo). Fonte do Fluxo alvo o
+  corpo de texto; a do Foco, a palavra do flash.
+- `wpm_flow` inicia um pouco abaixo do `wpm_focus` na 1ª vez (olho em
+  movimento pede mais devagar).
+- **ORP é exclusivo do Foco** — o toggle some/desabilita no Fluxo.
+
+**Comportamento do Fluxo:**
+- **Destaca o chunk inteiro** (as N palavras do chunk atual acesas juntas,
+  marca pula de N em N) — exige expor as fronteiras do chunk do motor ao
+  destaque (hoje o `onProgress` só passa o ponteiro).
+- Auto-scroll de acompanhamento (modo seguir + botão de retorno) já pronto;
+  respeitar `prefers-reduced-motion` (sem smooth-scroll para quem pede).
+- Os dois toggles do painel viram: `nav_snap_back_on_click` (clicar numa
+  palavra no Fluxo pula e volta pro Foco) e `nav_pause_on_switch`.
+
+**Não incluído (evitar over-engineering):** a abstração de relógio de áudio do
+TTS não entra aqui — mas o avanço do ponteiro fica centralizado no motor para
+a Fase 8 plugar o áudio sem cirurgia. Modo padrão de novo leitor = Foco.
 
 #### [ ] Fase 4 — Contas da casa (multiusuário leve, com senha)
 *Depende de: Fase 3 (módulo de settings). Desbloqueia: Fases 5, 6 (privado),
