@@ -16,6 +16,20 @@ const backBtn = document.getElementById("back-btn");
 const readerTitle = document.getElementById("reader-title");
 const rsvpDisplay = document.getElementById("rsvp-display");
 const progressFill = document.getElementById("progress-fill");
+const scrubber = document.getElementById("scrubber");
+const paragraphMarks = document.getElementById("paragraph-marks");
+const readingProgressInfo = document.getElementById("reading-progress-info");
+
+const navOpenBtn = document.getElementById("nav-open-btn");
+const navPanel = document.getElementById("nav-panel");
+const navPanelContent = document.getElementById("nav-panel-content");
+const navPanelClose = document.getElementById("nav-panel-close");
+const navBackToPositionBtn = document.getElementById("nav-back-to-position");
+const navCloseToggle = document.getElementById("nav-close-toggle");
+const navPauseToggle = document.getElementById("nav-pause-toggle");
+const navRewindBtn = document.getElementById("nav-rewind-btn");
+const navPlayPauseBtn = document.getElementById("nav-play-pause-btn");
+const navForwardBtn = document.getElementById("nav-forward-btn");
 
 const rsvpStage = document.getElementById("rsvp-stage");
 const playPauseBtn = document.getElementById("play-pause-btn");
@@ -144,6 +158,29 @@ orpToggle.addEventListener("click", () => {
     engine.rerender();
 });
 
+// ---- Navigation panel settings (both default off) ----
+let navCloseOnClick = localStorage.getItem("settings.navCloseOnClick") === "1";
+let navPauseOnOpen = localStorage.getItem("settings.navPauseOnOpen") === "1";
+
+function applyNavToggleUI() {
+    navCloseToggle.textContent = navCloseOnClick ? "Ligado" : "Desligado";
+    navCloseToggle.classList.toggle("active", navCloseOnClick);
+    navPauseToggle.textContent = navPauseOnOpen ? "Ligado" : "Desligado";
+    navPauseToggle.classList.toggle("active", navPauseOnOpen);
+}
+applyNavToggleUI();
+
+navCloseToggle.addEventListener("click", () => {
+    navCloseOnClick = !navCloseOnClick;
+    localStorage.setItem("settings.navCloseOnClick", navCloseOnClick ? "1" : "0");
+    applyNavToggleUI();
+});
+navPauseToggle.addEventListener("click", () => {
+    navPauseOnOpen = !navPauseOnOpen;
+    localStorage.setItem("settings.navPauseOnOpen", navPauseOnOpen ? "1" : "0");
+    applyNavToggleUI();
+});
+
 function escapeHtml(str) {
     return str
         .replace(/&/g, "&amp;")
@@ -185,6 +222,136 @@ function renderChunk(tokens) {
         .join(" ");
 }
 
+// ---- Navigation panel (full-text, click-to-jump) ----
+// Built once per document and cached — reopening the panel doesn't rebuild
+// the DOM. One click listener on the container (event delegation) instead of
+// one per word, since a document can have tens of thousands of tokens.
+let navPanelBuiltForTokens = null;
+let navWordEls = [];
+let navFollowMode = true;
+let navAutoScrolling = false;
+let navAutoScrollTimer = null;
+let navLastHighlighted = null;
+
+function buildNavPanel(tokens) {
+    if (navPanelBuiltForTokens === tokens) return;
+    navPanelContent.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    let paragraphEl = document.createElement("div");
+    paragraphEl.className = "nav-paragraph";
+    tokens.forEach((token, idx) => {
+        const span = document.createElement("span");
+        span.className = "nav-word";
+        span.textContent = token.text;
+        span.dataset.idx = idx;
+        paragraphEl.appendChild(span);
+        paragraphEl.appendChild(document.createTextNode(" "));
+        if (token.paragraphEnd) {
+            frag.appendChild(paragraphEl);
+            paragraphEl = document.createElement("div");
+            paragraphEl.className = "nav-paragraph";
+        }
+    });
+    frag.appendChild(paragraphEl);
+    navPanelContent.appendChild(frag);
+    navWordEls = navPanelContent.querySelectorAll(".nav-word");
+    navPanelBuiltForTokens = tokens;
+    navLastHighlighted = null;
+}
+
+function buildParagraphMarks(tokens) {
+    paragraphMarks.innerHTML = "";
+    const total = tokens.length;
+    if (!total) return;
+    const frag = document.createDocumentFragment();
+    tokens.forEach((token, idx) => {
+        if (token.paragraphEnd) {
+            const mark = document.createElement("span");
+            mark.style.left = `${((idx + 1) / total) * 100}%`;
+            frag.appendChild(mark);
+        }
+    });
+    paragraphMarks.appendChild(frag);
+}
+
+function scrollToCurrentWord(behavior) {
+    const el = navWordEls[engine.pointer];
+    if (!el) return;
+    navAutoScrolling = true;
+    el.scrollIntoView({ block: "center", behavior });
+    clearTimeout(navAutoScrollTimer);
+    navAutoScrollTimer = setTimeout(() => {
+        navAutoScrolling = false;
+    }, 200);
+}
+
+function updateNavHighlight() {
+    if (navPanel.hidden || !navWordEls.length) return;
+    const el = navWordEls[engine.pointer];
+    if (!el) return;
+    if (navLastHighlighted) navLastHighlighted.classList.remove("nav-current");
+    el.classList.add("nav-current");
+    navLastHighlighted = el;
+    if (navFollowMode) scrollToCurrentWord("auto");
+}
+
+navPanelContent.addEventListener("scroll", () => {
+    if (navAutoScrolling) return;
+    if (navFollowMode) {
+        navFollowMode = false;
+        navBackToPositionBtn.hidden = false;
+    }
+});
+
+navBackToPositionBtn.addEventListener("click", () => {
+    navFollowMode = true;
+    navBackToPositionBtn.hidden = true;
+    scrollToCurrentWord("smooth");
+});
+
+navPanelContent.addEventListener("click", (e) => {
+    const wordEl = e.target.closest(".nav-word");
+    if (!wordEl) return;
+    engine.seekToIndex(Number(wordEl.dataset.idx));
+    refreshPlayButton();
+    if (navCloseOnClick) closeNavPanel();
+});
+
+function openNavPanel() {
+    const tokens = engine.getTokens();
+    if (!tokens.length) return; // nothing loaded yet — never cache an empty build
+    buildNavPanel(tokens);
+    if (navPauseOnOpen) {
+        engine.pause();
+        refreshPlayButton();
+    }
+    navFollowMode = true;
+    navBackToPositionBtn.hidden = true;
+    navPanel.hidden = false;
+    updateNavHighlight();
+    scrollToCurrentWord("auto");
+}
+
+function closeNavPanel() {
+    navPanel.hidden = true;
+}
+
+function updateLiveCounter(pointer, total) {
+    if (!total) {
+        readingProgressInfo.textContent = "";
+        return;
+    }
+    const remaining = Math.max(0, total - pointer);
+    const wpm = Number(wpmSlider.value) || 300;
+    const minutesLeft = Math.max(0, Math.round(remaining / wpm));
+    readingProgressInfo.textContent =
+        `${pointer.toLocaleString()} / ${total.toLocaleString()} palavras · ` +
+        `~${minutesLeft} min restantes`;
+}
+
+navOpenBtn.addEventListener("click", openNavPanel);
+navPanelClose.addEventListener("click", closeNavPanel);
+
 // ---- RSVP engine wiring ----
 const engine = new RSVPEngine({
     onChunk: (tokens) => {
@@ -192,8 +359,10 @@ const engine = new RSVPEngine({
         renderChunk(tokens);
         fitDisplayText(plain);
     },
-    onProgress: (fraction) => {
+    onProgress: (fraction, pointer, total) => {
         progressFill.style.width = `${Math.min(100, fraction * 100)}%`;
+        updateLiveCounter(pointer, total);
+        updateNavHighlight();
     },
     onEnd: () => {
         refreshPlayButton();
@@ -205,7 +374,11 @@ const engine = new RSVPEngine({
 });
 
 function refreshPlayButton() {
-    playPauseBtn.textContent = engine.playing ? "⏸" : "▶";
+    // Two transport bars share one engine: the main reader controls and the
+    // panel controls. Keep both play icons in sync.
+    const icon = engine.playing ? "⏸" : "▶";
+    playPauseBtn.textContent = icon;
+    navPlayPauseBtn.textContent = icon;
     if (engine.playing) {
         acquireWakeLock();
     } else {
@@ -213,24 +386,53 @@ function refreshPlayButton() {
     }
 }
 
-playPauseBtn.addEventListener("click", () => {
+function doTogglePlay(btn) {
     engine.toggle();
     refreshPlayButton();
-    playPauseBtn.blur();
-});
-rewindBtn.addEventListener("click", () => {
+    if (btn) btn.blur();
+}
+function doRewind(btn) {
     engine.rewind();
     refreshPlayButton();
-    rewindBtn.blur();
-});
-forwardBtn.addEventListener("click", () => {
+    if (btn) btn.blur();
+}
+function doForward(btn) {
     engine.forward();
     refreshPlayButton();
-    forwardBtn.blur();
-});
-rsvpStage.addEventListener("click", () => {
-    engine.toggle();
+    if (btn) btn.blur();
+}
+
+playPauseBtn.addEventListener("click", () => doTogglePlay(playPauseBtn));
+rewindBtn.addEventListener("click", () => doRewind(rewindBtn));
+forwardBtn.addEventListener("click", () => doForward(forwardBtn));
+navPlayPauseBtn.addEventListener("click", () => doTogglePlay(navPlayPauseBtn));
+navRewindBtn.addEventListener("click", () => doRewind(navRewindBtn));
+navForwardBtn.addEventListener("click", () => doForward(navForwardBtn));
+rsvpStage.addEventListener("click", () => doTogglePlay());
+
+// ---- Scrubber (draggable progress bar) ----
+function seekFromPointerEvent(e) {
+    const rect = scrubber.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const fraction = rect.width ? x / rect.width : 0;
+    engine.seekFraction(fraction);
     refreshPlayButton();
+}
+
+let scrubbing = false;
+scrubber.addEventListener("pointerdown", (e) => {
+    scrubbing = true;
+    scrubber.setPointerCapture(e.pointerId);
+    seekFromPointerEvent(e);
+});
+scrubber.addEventListener("pointermove", (e) => {
+    if (scrubbing) seekFromPointerEvent(e);
+});
+scrubber.addEventListener("pointerup", () => {
+    scrubbing = false;
+});
+scrubber.addEventListener("pointercancel", () => {
+    scrubbing = false;
 });
 
 wpmSlider.addEventListener("input", () => {
@@ -253,16 +455,13 @@ document.addEventListener("keydown", (e) => {
     if (readerView.hidden) return;
     if (e.code === "Space") {
         e.preventDefault();
-        engine.toggle();
-        refreshPlayButton();
+        doTogglePlay();
     } else if (e.code === "ArrowLeft") {
         e.preventDefault();
-        engine.rewind();
-        refreshPlayButton();
+        doRewind();
     } else if (e.code === "ArrowRight") {
         e.preventDefault();
-        engine.forward();
-        refreshPlayButton();
+        doForward();
     } else if (e.code === "ArrowUp") {
         e.preventDefault();
         wpmSlider.value = Math.min(1000, Number(wpmSlider.value) + 10);
@@ -301,9 +500,12 @@ async function showReader(id, push = true) {
     // minimum font size).
     libraryView.hidden = true;
     readerView.hidden = false;
+    closeNavPanel();
+    navPanelBuiltForTokens = null;
     engine.setWpm(Number(wpmSlider.value));
     engine.setChunkSize(Number(chunkSlider.value));
     engine.load(doc.raw_text);
+    buildParagraphMarks(engine.getTokens());
     refreshPlayButton();
     if (push) history.pushState({ view: "reader", id }, "", `#/read/${id}`);
 }
@@ -432,8 +634,9 @@ docTitleInput.addEventListener("keydown", (e) => {
     }
 });
 document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !newDocModal.hidden) {
-        closeModal();
+    if (e.key === "Escape") {
+        if (!newDocModal.hidden) closeModal();
+        else if (!navPanel.hidden) closeNavPanel();
     }
 });
 

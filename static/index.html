@@ -38,15 +38,20 @@
     <div class="reader-topbar">
         <button id="back-btn" class="icon-btn" title="Voltar à biblioteca">←</button>
         <span id="reader-title" class="reader-title"></span>
+        <button id="nav-open-btn" class="icon-btn" title="Navegar no texto">📄</button>
     </div>
 
     <div id="rsvp-stage" class="rsvp-stage" title="Toque para play/pause">
         <div id="rsvp-display" class="rsvp-display">Pronto</div>
     </div>
 
-    <div class="progress-bar">
-        <div id="progress-fill" class="progress-fill"></div>
+    <div id="scrubber" class="scrubber">
+        <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <div id="paragraph-marks" class="paragraph-marks"></div>
     </div>
+    <div id="reading-progress-info" class="reading-progress-info"></div>
 
     <div class="controls">
         <div class="transport">
@@ -72,6 +77,28 @@
                 <label for="orp-toggle">Destaque ORP (letra-âncora)</label>
                 <button id="orp-toggle" class="icon-btn" title="Ativar/desativar ORP">Desligado</button>
             </div>
+            <div class="slider-row toggle-row">
+                <label for="nav-close-toggle">Fechar painel ao clicar numa palavra</label>
+                <button id="nav-close-toggle" class="icon-btn" title="Fechar o painel de navegação automaticamente ao clicar numa palavra">Desligado</button>
+            </div>
+            <div class="slider-row toggle-row">
+                <label for="nav-pause-toggle">Pausar ao abrir o painel</label>
+                <button id="nav-pause-toggle" class="icon-btn" title="Pausar a leitura automaticamente ao abrir o painel de navegação">Desligado</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="nav-panel" class="nav-panel" hidden>
+        <div class="nav-panel-header">
+            <span>Navegar no texto</span>
+            <button id="nav-panel-close" class="icon-btn" title="Fechar">✕</button>
+        </div>
+        <div id="nav-panel-content" class="nav-panel-content"></div>
+        <button id="nav-back-to-position" class="nav-back-btn" hidden>↓ Voltar pra posição atual</button>
+        <div class="nav-panel-transport">
+            <button id="nav-rewind-btn" class="icon-btn" title="Voltar ao início da frase">⏮</button>
+            <button id="nav-play-pause-btn" class="icon-btn play-btn" title="Play/Pause">▶</button>
+            <button id="nav-forward-btn" class="icon-btn" title="Avançar para a próxima frase">⏭</button>
         </div>
     </div>
 </main>

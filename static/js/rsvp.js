@@ -98,6 +98,18 @@ export class RSVPEngine {
         this._render();
     }
 
+    getTokens() {
+        return this.tokens;
+    }
+
+    // Exact jump to a token index — used by the navigation panel's
+    // click-to-jump (seekFraction is an approximation, this isn't).
+    seekToIndex(idx) {
+        this.pause();
+        this.pointer = Math.max(0, Math.min(this.tokens.length - 1, idx));
+        this._render();
+    }
+
     setWpm(wpm) {
         this.wpm = Math.max(100, Math.min(1000, wpm));
     }
@@ -189,10 +201,15 @@ export class RSVPEngine {
         return chunk;
     }
 
+    _emitProgress() {
+        const total = this.tokens.length;
+        this.onProgress(total ? this.pointer / total : 0, this.pointer, total);
+    }
+
     _render() {
         const chunk = this._currentChunk();
         this.onChunk(chunk);
-        this.onProgress(this.tokens.length ? this.pointer / this.tokens.length : 0);
+        this._emitProgress();
     }
 
     _tick() {
@@ -200,11 +217,12 @@ export class RSVPEngine {
         const chunk = this._currentChunk();
         if (chunk.length === 0) {
             this.playing = false;
+            this._emitProgress();
             this.onEnd();
             return;
         }
         this.onChunk(chunk);
-        this.onProgress(this.pointer / this.tokens.length);
+        this._emitProgress();
 
         const baseMsPerWord = 60000 / this.wpm;
         const delay = baseMsPerWord * (chunkWeight(chunk) / this.avgWeight);

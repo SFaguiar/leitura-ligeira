@@ -223,11 +223,18 @@ body {
     word-break: break-word;
 }
 
+.scrubber {
+    position: relative;
+    padding: 12px 0;
+    margin: 0.5rem 0 0;
+    cursor: pointer;
+    touch-action: none;
+}
+
 .progress-bar {
     height: 4px;
     background: var(--border);
     border-radius: 2px;
-    margin: 1rem 0;
     overflow: hidden;
 }
 
@@ -236,6 +243,32 @@ body {
     background: var(--accent);
     width: 0%;
     transition: width 0.1s linear;
+}
+
+.paragraph-marks {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 12px;
+    height: 4px;
+    pointer-events: none;
+}
+
+.paragraph-marks span {
+    position: absolute;
+    top: -3px;
+    width: 1px;
+    height: 10px;
+    background: var(--muted);
+    opacity: 0.5;
+}
+
+.reading-progress-info {
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-align: center;
+    margin: 0 0 1rem;
+    min-height: 1.1em;
 }
 
 .controls {
@@ -313,4 +346,89 @@ body {
 .orp-pivot {
     flex: 0 0 auto;
     color: var(--accent);
+}
+
+/* Navigation panel — full-text drawer with click-to-jump */
+.nav-panel {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-panel[hidden] {
+    display: none;
+}
+
+.nav-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.nav-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.25rem 5rem;
+    max-width: 720px;
+    margin: 0 auto;
+    width: 100%;
+    font-size: 1.05rem;
+    line-height: 2;
+}
+
+.nav-paragraph {
+    margin: 0 0 1.2rem;
+}
+
+.nav-word {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0.05em 0.15em;
+}
+
+.nav-word:hover {
+    background: var(--border);
+}
+
+.nav-word.nav-current {
+    background: var(--accent);
+    color: #fff;
+}
+
+.nav-panel-transport {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.7rem 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--card-bg);
+}
+
+.nav-back-btn {
+    position: absolute;
+    bottom: 5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    z-index: 1;
+}
+
+.nav-back-btn[hidden] {
+    display: none;
 }
