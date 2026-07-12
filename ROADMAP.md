@@ -71,17 +71,40 @@ O que funciona hoje, testado em uso real:
 
 ### Alvo (com o pivô multiusuário)
 
-- **Identidade leve, sem segurança real:** tela "quem está lendo?" (perfil
-  tipo seletor, sem senha), `user_id` guardado no cliente e enviado nas
-  requisições. É confiança de rede doméstica — qualquer um na LAN pode se
-  passar por qualquer perfil. *Limitação aceita; PIN opcional fica no backlog
-  se um dia incomodar.* (Proposta LEAN — confirmar na fase de contas.)
+- **Identidade com senha real (2026-07-12, decidido):** login de verdade,
+  não mais um seletor sem senha. Senha hasheada no servidor (`passlib`/
+  `bcrypt`), **sem exigência de complexidade obrigatória** — é ambiente
+  doméstico, cada um escolhe a própria senha, simples se quiser. Login emite
+  um cookie de sessão (simples, servidor mantém a sessão ou assina o cookie —
+  não é OAuth/JWT, não precisa dessa complexidade aqui); requisições
+  seguintes carregam o cookie em vez de reenviar a senha. **Tensão aceita por
+  ora:** a senha ainda trafega em HTTP puro até a Fase 11 (HTTPS) — aceitável
+  numa LAN de confiança doméstica, mas revisitar (ou adiantar a Fase 11) se a
+  rede deixar de ser só isso.
+- **Papéis:** `users.role` (`admin` | `member`). O primeiro perfil criado no
+  sistema vira `admin` automaticamente (convenção comum de bootstrap em apps
+  self-hosted — proposta do agente, sem objeção esperada). Admin tem direitos
+  sobre a **biblioteca da casa**; documentos **privados** continuam
+  exclusivos do dono, admin não anula privacidade.
+- **Permissões sobre documentos (2026-07-12, decidido):** quem
+  renomeia/exclui um documento é (a) quem subiu (`owner_id`), (b) qualquer
+  pessoa explicitamente autorizada naquele documento (`document_permissions`
+  — concessão granular, não é tudo-ou-nada), ou (c) o admin global (só para
+  documentos `house`). Substitui o modelo antigo "qualquer um exclui" e o
+  "só o dono" — era um dos dois extremos, ficou o meio-termo com concessão.
 - **Configurações por conta, sincronizadas pelo servidor** — seguem a pessoa
-  entre celular/PC. O cliente já deve acessar settings por um **módulo único
-  de get/set** (hoje localStorage por trás); na fase de contas, só esse módulo
-  muda para falar com o servidor. Sem retrabalho espalhado.
+  entre celular/PC, **incluindo o tema** (claro/escuro é por conta, não por
+  aparelho — decidido). O cliente já deve acessar settings por um **módulo
+  único de get/set** (hoje localStorage por trás); na fase de contas, só esse
+  módulo muda para falar com o servidor. Sem retrabalho espalhado.
 - **Biblioteca da casa:** documentos têm `visibility` (`house` | `private`) e
   `owner_id`. Padrão é `house`; privado só aparece para o dono.
+- **Status de leitura por usuário (2026-07-12, decidido):** as prateleiras
+  clássicas de biblioteca — **quero ler / lendo / lido / abandonado** — por
+  usuário × documento, em `reading_progress.status`. Abrir um documento pela
+  primeira vez muda o status pra "lendo" automaticamente; o usuário pode
+  mudar manualmente a qualquer momento (marcar "lido", "abandonado", ou
+  "quero ler" antes mesmo de abrir, como um favorito/wishlist).
 - **TTS:** Kokoro-82M via Kokoro-FastAPI como serviço Docker na rede do stack
   local de IA (RTX 5060 Ti 8GB) — sem duplicar infra de GPU. PDF: PyMuPDF ·
   EPUB: `ebooklib` · URL: `trafilatura` (sem headless browser).
@@ -90,7 +113,9 @@ O que funciona hoje, testado em uso real:
 
 ```
 users:
-  id, name, created_at
+  id, name, password_hash, role ('admin'|'member', default 'member'),
+  created_at
+  -- primeiro usuário criado vira 'admin' automaticamente
 
 user_settings:                -- 1:1 com users
   user_id (unique),
@@ -105,9 +130,15 @@ documents:
   owner_id (FK users, nullable p/ legado), visibility ('house'|'private'),
   created_at
 
-reading_progress:             -- funcional: continuar de onde parou
-  user_id, document_id, position, updated_at
-  (PK composta user_id+document_id — cada pessoa tem SUA posição)
+document_permissions:          -- concessão granular além do dono/admin
+  document_id, user_id (PK composta)
+  -- presença da linha = pode renomear/excluir esse documento
+
+reading_progress:             -- funcional: continuar de onde parou + prateleira
+  user_id, document_id, position,
+  status ('quero_ler'|'lendo'|'lido'|'abandonado', default 'quero_ler'),
+  updated_at
+  (PK composta user_id+document_id — cada pessoa tem SUA posição e status)
 
 reading_sessions:             -- estatísticas: event-log de sessões
   id, user_id, document_id, mode ('focus'|'flow'),
@@ -122,14 +153,18 @@ generated_audio:
 ### Superfície de API alvo
 
 ```
-GET/POST   /users                        # listar perfis / criar perfil
+POST       /login                        # verifica senha, emite cookie de sessão
+POST       /logout
+GET/POST   /users                        # listar perfis / criar perfil (define senha)
 GET/PUT    /users/{id}/settings          # configurações da conta
 POST       /documents                    # paste (depois upload/URL); aceita visibility
-GET        /documents                    # biblioteca (casa + privados do usuário atual)
+GET        /documents                    # biblioteca (casa + privados do usuário atual),
+                                          # inclui status de leitura do usuário atual
 GET        /documents/{id}
-PATCH      /documents/{id}               # renomear
-DELETE     /documents/{id}
-GET/PUT    /documents/{id}/progress      # posição do usuário atual
+PATCH      /documents/{id}               # renomear — exige dono/permissão/admin
+DELETE     /documents/{id}               # excluir — exige dono/permissão/admin
+POST       /documents/{id}/permissions   # dono/admin concede acesso a outro usuário
+GET/PUT    /documents/{id}/progress      # posição + status do usuário atual
 POST       /sessions                     # abrir sessão de leitura
 PATCH      /sessions/{id}                # heartbeat / fechar
 POST       /documents/{id}/audio?voice=  # gerar/retornar narração cacheada
@@ -193,31 +228,34 @@ GET        /documents/{id}/audio/{voice} # stream do áudio
 - Supersede as decisões anteriores "sem contas" e "estatísticas da casa como
   um usuário só".
 
+**2026-07-12 — identidade, permissões e prateleiras (5ª rodada)**
+- **Senha de verdade**, não seletor sem senha — mas sem exigência de
+  complexidade obrigatória (ambiente doméstico). Reverte a proposta de
+  "identidade leve sem segurança real".
+- **Tema é por conta** (confirmado, não por aparelho).
+- **Permissão granular sobre documentos:** dono, OU usuário com permissão
+  explícita (`document_permissions`), OU admin global (só docs `house`) —
+  não mais "qualquer um" nem "só o dono".
+- **Opt-out de estatísticas confirmado:** desliga `reading_sessions`, mantém
+  `reading_progress` (posição é funcionalidade, não telemetria).
+- **Prateleiras clássicas de biblioteca:** quero ler / lendo / lido /
+  abandonado, por usuário × documento (`reading_progress.status`).
+- Fecha as questões abertas nº 1–4 da rodada anterior; a nº 5 (o que mais
+  entra na sessão) fica respondida em parte pelas prateleiras — "documento
+  terminado" já é coberto por `status = 'lido'`, não precisa duplicar como
+  campo de sessão.
+
 ---
 
 ## Questões em aberto (fechar antes das fases que dependem delas)
 
-Para a **Fase 4 (contas)**:
-1. Nível de identidade: seletor de perfil sem senha (proposta) é suficiente,
-   ou quer PIN opcional por perfil desde o início?
-2. Tema (claro/escuro) é por conta ou por aparelho? (Proposta: por conta,
-   como todo o resto — mais simples e consistente.)
-3. Direitos sobre documentos da casa: qualquer um renomeia/exclui (confiança
-   doméstica, comportamento atual) ou só quem subiu? (Privados: só o dono,
-   isso é dado.)
-
-Para a **Fase 5 (progresso/sessões)**:
-4. Escopo do opt-out de estatísticas — proposta: desligar `collect_stats`
-   para de gravar **sessões** (event-log de desempenho), mas a **posição de
-   leitura continua salva** (é funcionalidade, não telemetria: sem ela
-   "continuar de onde parou" quebra). Confirmar se é isso.
-5. O que mais precisa entrar no registro de sessão além de WPM médio,
-   palavras avançadas, modo, início/fim? (Ex.: documento terminado sim/não
-   para taxa de conclusão?)
-
 Para a **Fase 8 (TTS)**:
-6. Como obter timestamps por palavra (forced alignment com Whisper na GPU vs
+1. Como obter timestamps por palavra (forced alignment com Whisper na GPU vs
    saída do Piper vs estimativa proporcional) — avaliar quando chegar.
+
+*(As questões nº 1–5 da rodada anterior sobre contas/permissões/opt-out/
+prateleiras foram todas fechadas em 2026-07-12 — ver "Registro de decisões"
+acima e as fases 4/5 abaixo.)*
 
 ---
 
@@ -278,30 +316,45 @@ com campo `mode`.*
 - Fonte do Flow independente da fonte do flash RSVP (tamanhos diferentes por
   natureza — corpo de texto vs palavra gigante).
 
-#### [ ] Fase 4 — Contas da casa (multiusuário leve)
+#### [ ] Fase 4 — Contas da casa (multiusuário leve, com senha)
 *Depende de: Fase 3 (módulo de settings). Desbloqueia: Fases 5, 6 (privado),
 9 (stats individuais).*
-- Tabela `users` + tela "quem está lendo?" (criar/escolher perfil; sem senha
-  — ver questão aberta nº 1).
+- Tabela `users` com `password_hash` (hasheada, sem exigência de
+  complexidade) e `role` (`admin`/`member`); primeiro perfil criado vira
+  admin automaticamente.
+- Tela de login (criar perfil + senha / entrar); `POST /login` verifica e
+  emite cookie de sessão simples — nada de OAuth/JWT, essa complexidade não
+  se justifica aqui. Requisições seguintes carregam o cookie.
 - `user_settings` no servidor; o módulo de settings do cliente passa a
-  sincronizar com a conta; settings atuais do localStorage migram para o
-  primeiro perfil criado.
+  sincronizar com a conta (inclui tema, confirmado por conta); settings
+  atuais do localStorage migram para o primeiro perfil criado.
 - `documents.owner_id` + `visibility` (`house` default | `private`); o modal
   de paste ganha a opção "privado". Biblioteca lista casa + privados do
   usuário ativo.
-- Direitos: privado só o dono vê/gerencia; casa conforme questão aberta nº 3.
-- Sem segurança real (LAN doméstica) — documentado como limitação aceita.
+- **Permissões:** renomear/excluir exige dono, OU permissão concedida
+  (`document_permissions` — dono ou admin concede a outra pessoa), OU papel
+  admin (só para documentos `house`; privados seguem exclusivos do dono,
+  admin não anula privacidade).
+- Limitação aceita: senha trafega em HTTP puro até a Fase 11 — ok numa LAN
+  de confiança doméstica, revisitar se isso mudar.
 
-#### [ ] Fase 5 — Progresso e sessões por usuário
-*Depende de: Fase 4 (user_id). Desbloqueia: Fase 9 (dashboard), gamificação.*
+#### [ ] Fase 5 — Progresso, prateleiras e sessões por usuário
+*Depende de: Fase 4 (user_id). Desbloqueia: Fase 7 (busca por prateleira),
+Fase 9 (dashboard), gamificação.*
 - `reading_progress` por usuário×documento — **cada pessoa continua de onde
   ELA parou** (o pivô dissolveu a antiga limitação de posição única por
   documento).
+- **Prateleiras clássicas** (`reading_progress.status`): quero ler / lendo /
+  lido / abandonado. Abrir o documento pela 1ª vez muda para "lendo"
+  automaticamente; o usuário troca manualmente a qualquer momento (inclusive
+  marcar "quero ler" antes de abrir, como favorito).
 - `reading_sessions` com `user_id` e `mode`; começa no primeiro play, fecha
   em fim/saída/5 min de inatividade; heartbeat ~30s + envio explícito ao
   pausar/sair/minimizar.
-- **Opt-in/out de coleta por usuário** (`collect_stats`) — escopo conforme
-  questão aberta nº 4.
+- **Opt-in/out de coleta por usuário** (`collect_stats`): desliga apenas
+  `reading_sessions` (telemetria de desempenho); `reading_progress`
+  (posição + status) continua sempre salvo, é funcionalidade, não coleta.
+- "Documento terminado" não é campo de sessão — já é `status = 'lido'`.
 - Limitações mantidas: "palavras lidas" pode inflar (play sozinho, saltos de
   navegação contam) — sem detecção de atenção.
 
@@ -317,11 +370,14 @@ conteúdo real, Fase 7 (biblioteca cheia pede organização).*
 - Limitações aceitas: PDF de 2 colunas/notas → ordem bagunçada; escaneado
   (sem texto) fora — sem OCR.
 
-#### [ ] Fase 7 — Pastas + busca na biblioteca
-*Depende de: nada tecnicamente; faz mais sentido após a Fase 6 encher a
-biblioteca.*
+#### [ ] Fase 7 — Pastas, busca e prateleiras na biblioteca
+*Depende de: Fase 5 (`reading_progress.status`); faz mais sentido após a
+Fase 6 encher a biblioteca.*
 - Pastas/coleções e busca por título/conteúdo (lacunas do SwiftRead
   original). Respeita visibilidade (privados só na visão do dono).
+- **Filtro/agrupamento por prateleira** (quero ler/lendo/lido/abandonado) —
+  as prateleiras da Fase 5 viram navegação de verdade na biblioteca, não só
+  um campo salvo sem uso.
 
 #### [ ] Fase 8 — TTS sincronizado (nos dois modos)
 *Depende de: Fase 3 (substrato/modos), idealmente Fase 6 (conteúdo real).
@@ -333,7 +389,7 @@ TTS de uma vez".*
   para voz padrão PT-BR/EN; troca manual por documento. Sem fila (sequencial,
   escala doméstica). Tabela `generated_audio`.
 - **Sincronização por palavra:** timestamps cacheados junto do áudio (método
-  = questão aberta nº 6). **Flow:** karaoke no texto (marca segue a fala).
+  = questão aberta nº 1, acima). **Flow:** karaoke no texto (marca segue a fala).
   **Focus:** flash guiado pelo relógio do áudio (não pelo timer de WPM — a
   prosódia não casa com ritmo fixo).
 - O relógio do highlight já é plugável desde a Fase 3 — aqui só troca a
@@ -372,8 +428,12 @@ estável.*
 
 ## Limitações aceitas (não resolver a menos que seja pedido)
 
-- **Sem segurança real entre perfis** — qualquer um na LAN escolhe qualquer
-  perfil; é confiança doméstica por design (PIN opcional só se incomodar).
+- **Senha sem exigência de complexidade obrigatória** — ambiente doméstico,
+  cada um escolhe a própria senha. Ainda é hasheada e verificada de verdade
+  (não é mais "sem segurança real").
+- **Senha trafega em HTTP puro até a Fase 11** (HTTPS local) — aceitável numa
+  LAN de confiança doméstica; revisitar (ou adiantar a Fase 11) se a rede
+  deixar de ser só isso.
 - PDFs de duas colunas ou com muitas notas de rodapé podem extrair em ordem
   bagunçada; documentos escaneados (sem texto) ficam de fora — sem OCR.
 - Sites com paywall, JS pesado ou anti-bot falham na extração de URL, sem

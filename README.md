@@ -29,10 +29,11 @@ O que funciona hoje:
   renomear/excluir, contagem de palavras e tempo estimado por item.
 
 **A seguir** (ver ROADMAP): modos Focus/Flow formais com WPM independente por
-modo; contas leves da casa (perfis sem senha) com configurações, progresso e
-estatísticas individuais; biblioteca compartilhada com opção de documento
-privado; import de PDF/EPUB/URL; TTS local sincronizado (Kokoro) nos dois
-modos.
+modo; contas da casa com login (senha simples, sem exigência de
+complexidade), permissões por documento (dono/concedido/admin), prateleiras
+de leitura (quero ler/lendo/lido/abandonado), progresso e estatísticas
+individuais; biblioteca compartilhada com opção de documento privado; import
+de PDF/EPUB/URL; TTS local sincronizado (Kokoro) nos dois modos.
 
 **Nota sobre WPM:** o número no slider é o throughput *efetivo* — palavras
 por minuto reais, já descontando as micro-pausas. Se você calibrou sua
@@ -64,9 +65,9 @@ um arquivo.
   PWA offline vêm numa fase futura. Sem contexto seguro, o Android não
   oferece o banner completo de "instalar app", mas tudo funciona na aba do
   navegador.
-- **Sem segurança real entre perfis** (quando as contas chegarem): é seleção
-  de perfil de confiança doméstica, não autenticação — qualquer pessoa na
-  sua Wi-Fi pode abrir o app.
+- **Login sem exigência de senha complexa** (quando as contas chegarem): é
+  ambiente doméstico, cada um escolhe a própria senha. A senha ainda trafega
+  em HTTP puro até a fase de HTTPS — aceitável numa LAN de confiança.
 - Hostname amigável via mDNS (`reader.local`) está planejado, mas o suporte
   no Android é inconsistente — o caminho garantido é o IP fixo do PC.
 - Lista completa de limitações aceitas (e o porquê de cada uma) no
