@@ -1,524 +1,389 @@
 # Roadmap — Leitura Ligeira
 
-Leitor RSVP self-hosted, single-user, sem login, para uso doméstico via Wi-Fi.
-Clientes principais: celulares na rede Wi-Fi de casa, acessando como web app
-comum (sem extensão de navegador, sem app nativo).
+Leitor de leitura rápida self-hosted para a rede de casa, com dois jeitos de
+ler: **Focus** (RSVP — uma palavra/chunk piscando em posição fixa) e **Flow**
+(texto completo com a marca acompanhando a palavra, em formalização). Roda no
+PC da casa, acessado pelos celulares via Wi-Fi como web app comum — sem
+extensão de navegador, sem app nativo.
+
+**Pivô de produto (2026-07-12):** o app deixa de ser single-user e passa a ser
+**multiusuário leve da casa** — contas individuais para desempenho, progresso
+e configurações por pessoa, mas a biblioteca continua sendo *da casa*
+(documentos compartilhados por padrão; privados por escolha de quem sobe).
+
+---
+
+## Princípios de engenharia
+
+1. **LEAN/ágil com visão de longo prazo.** Entregar o mínimo que valida a
+   experiência e iterar com feedback de uso real — mas quando uma fase futura
+   depende de um schema ou substrato, ele nasce *antes* de qualquer dado ser
+   gravado no formato errado. Exemplo concreto: contas entram **antes** de
+   progresso/sessões, para nunca migrar dados de leitura sem dono.
+2. **Zero débito técnico deliberado.** Reordenar fases é preferível a
+   retrabalho. Dependências entre fases ficam anotadas em cada fase ("depende
+   de / desbloqueia") para que reprioritização seja segura.
+3. **Decisões registradas, com data.** Toda reversão de decisão anterior é
+   explícita (este arquivo é a fonte da verdade; a conversa se perde, o
+   ROADMAP não).
+4. **Testar ao vivo antes de subir.** Toda mudança é exercitada no navegador
+   real (não só o código lido); o usuário testa e autoriza cada commit.
+5. **Mobile-first.** O cliente principal é o celular na Wi-Fi de casa.
+6. **Substratos que pagam duas vezes.** O painel token→DOM da navegação é o
+   mesmo substrato do Flow e do karaoke de TTS. O relógio do highlight é
+   plugável: hoje timer de WPM, amanhã timestamps de áudio.
+
+---
+
+## Estado atual (2026-07-12)
+
+O que funciona hoje, testado em uso real:
+
+- **Leitor RSVP (Focus):** micro-pausas por pontuação/palavra longa/parágrafo,
+  WPM efetivo 100–1000 (o número do slider é throughput real), chunk 1–4 que
+  não cruza fronteira de frase/parágrafo, ORP opcional (letra-âncora estilo
+  Spritz), shrink-to-fit para palavras longas, tema claro/escuro, Wake Lock,
+  tap-to-play, atalhos de teclado.
+- **Navegação:** painel de texto completo (um `<span>` por palavra), clique em
+  qualquer palavra pula para ela, palavra atual destacada com auto-scroll
+  ("modo seguir" + botão de retorno), barra de transporte própria no painel,
+  scrubber arrastável com marcadores de parágrafo, contador vivo de
+  palavras/tempo restante. Navegação por frase nos botões rewind/forward.
+- **Biblioteca:** paste de texto com dedupe por hash, título único automático,
+  renomear/excluir, contagem de palavras + tempo estimado por item.
+- **Infra:** FastAPI + SQLite (WAL, busy_timeout, foreign_keys), migrações
+  automáticas de coluna, timestamps ISO UTC, limites de tamanho com erro
+  amigável, histórico de navegação real (botão voltar do Android funciona
+  entre biblioteca↔leitor), Dockerfile + compose, AGPL-3.0.
+
+---
 
 ## Arquitetura
 
-- **Backend:** Python + FastAPI
-- **Banco:** SQLite, arquivo único, schema mínimo, sem tabela de usuários
-- **Frontend:** JS puro (vanilla) + HTML/CSS, sem build step nem framework —
-  o loop de timing do RSVP e o estado do player não precisam da complexidade
-  de React/Vue, e um pipeline de build é custo de manutenção sem retorno
-  nessa escala
-- **PDF:** PyMuPDF (`fitz`) · **EPUB:** `ebooklib` · **URL:** `trafilatura`
-  (sem headless browser/Playwright/Puppeteer)
-- **TTS:** Kokoro-82M (Apache 2.0) via Kokoro-FastAPI (API compatível com
-  OpenAI), como serviço Docker separado, na mesma rede Docker do stack local
-  de IA já existente (RTX 5060 Ti 8GB) — evita duplicar infra de GPU
-- **Deploy:** Docker Compose, um serviço para o app + um para o TTS, acesso
-  só via LAN (sem VPN/remoto), sem HTTPS/TLS na v1 original (revertido na
-  Fase 9, ver abaixo)
+### Atual
 
-### Modelo de dados (rascunho, ajustar durante a implementação)
+- **Backend:** Python + FastAPI. **Banco:** SQLite, arquivo único, WAL.
+- **Frontend:** JS puro + HTML/CSS, sem build step — o loop de timing do RSVP
+  e o estado do player não precisam de framework, e pipeline de build é custo
+  sem retorno nessa escala.
+- **Deploy:** Docker Compose; LAN apenas; HTTP puro (HTTPS na fase de PWA).
+- Config do leitor em `localStorage` (por navegador).
+
+### Alvo (com o pivô multiusuário)
+
+- **Identidade leve, sem segurança real:** tela "quem está lendo?" (perfil
+  tipo seletor, sem senha), `user_id` guardado no cliente e enviado nas
+  requisições. É confiança de rede doméstica — qualquer um na LAN pode se
+  passar por qualquer perfil. *Limitação aceita; PIN opcional fica no backlog
+  se um dia incomodar.* (Proposta LEAN — confirmar na fase de contas.)
+- **Configurações por conta, sincronizadas pelo servidor** — seguem a pessoa
+  entre celular/PC. O cliente já deve acessar settings por um **módulo único
+  de get/set** (hoje localStorage por trás); na fase de contas, só esse módulo
+  muda para falar com o servidor. Sem retrabalho espalhado.
+- **Biblioteca da casa:** documentos têm `visibility` (`house` | `private`) e
+  `owner_id`. Padrão é `house`; privado só aparece para o dono.
+- **TTS:** Kokoro-82M via Kokoro-FastAPI como serviço Docker na rede do stack
+  local de IA (RTX 5060 Ti 8GB) — sem duplicar infra de GPU. PDF: PyMuPDF ·
+  EPUB: `ebooklib` · URL: `trafilatura` (sem headless browser).
+
+### Modelo de dados alvo
 
 ```
+users:
+  id, name, created_at
+
+user_settings:                -- 1:1 com users
+  user_id (unique),
+  wpm_focus, wpm_flow, chunk_size, font_size,
+  orp_enabled, nav_close_on_click, nav_pause_on_open,
+  theme, collect_stats,
+  updated_at
+
 documents:
-  id, title, format, source_type (upload | url | paste),
-  raw_text, content_hash, created_at
+  id, title, format, source_type (upload|url|paste),
+  raw_text, content_hash, word_count, lang,
+  owner_id (FK users, nullable p/ legado), visibility ('house'|'private'),
+  created_at
+
+reading_progress:             -- funcional: continuar de onde parou
+  user_id, document_id, position, updated_at
+  (PK composta user_id+document_id — cada pessoa tem SUA posição)
+
+reading_sessions:             -- estatísticas: event-log de sessões
+  id, user_id, document_id, mode ('focus'|'flow'),
+  started_at, ended_at, start_pointer, end_pointer,
+  words_advanced, avg_wpm
 
 generated_audio:
   document_id, voice, file_path, created_at
+  (FKs com ON DELETE CASCADE; foreign_keys=ON já habilitado)
 ```
 
-### Superfície de API (rascunho, ajustar durante a implementação)
+### Superfície de API alvo
 
 ```
-POST   /documents                      # upload de arquivo, ou paste de texto/URL no corpo
-GET    /documents                      # lista a biblioteca
-GET    /documents/{id}                 # texto + metadados
-PATCH  /documents/{id}                 # renomear (título único, sufixo automático em colisão)
-DELETE /documents/{id}                 # excluir
-POST   /documents/{id}/audio?voice=...  # gera ou retorna narração já cacheada
-GET    /documents/{id}/audio/{voice}   # stream do áudio cacheado
+GET/POST   /users                        # listar perfis / criar perfil
+GET/PUT    /users/{id}/settings          # configurações da conta
+POST       /documents                    # paste (depois upload/URL); aceita visibility
+GET        /documents                    # biblioteca (casa + privados do usuário atual)
+GET        /documents/{id}
+PATCH      /documents/{id}               # renomear
+DELETE     /documents/{id}
+GET/PUT    /documents/{id}/progress      # posição do usuário atual
+POST       /sessions                     # abrir sessão de leitura
+PATCH      /sessions/{id}                # heartbeat / fechar
+POST       /documents/{id}/audio?voice=  # gerar/retornar narração cacheada
+GET        /documents/{id}/audio/{voice} # stream do áudio
 ```
 
-## Decisões que revertem os non-goals originais
+---
 
-- **Estatísticas de longo prazo** (Fase 7) e **teste de velocidade/compreensão**
-  (Fase 8): o spec original excluía isso explicitamente ("no long-term
-  statistics dashboards", "no comprehension quizzes"); decidimos incluir
-  como fases futuras, depois do núcleo pronto e estável.
-- **PWA offline real** (Fase 9): o spec original mandava servir HTTP puro e
-  aceitar que isso impede o service worker (contexto seguro é exigido).
-  Decidimos configurar HTTPS local via mkcert só para habilitar isso de
-  verdade.
-- **Sync palavra-a-palavra TTS/RSVP** (Fase 10): o spec original tratava
-  isso como decisão arquitetural deliberada ("not an oversight") — TTS e
-  RSVP deveriam ficar como modos independentes, sem alinhamento por
-  palavra, sem Whisper. Revertemos essa decisão. Em aberto: como extrair os
-  timestamps por palavra do Piper (saída nativa do modelo vs. um passo de
-  alinhamento forçado à parte, tipo Whisper/aeneas) — não é trivial em
-  todos os wrappers e precisa ser avaliado quando chegarmos lá.
+## Registro de decisões (cronológico, condensado)
 
-## Decisões registradas (antes estavam implícitas no código)
+**2026-07-11 — fundação**
+- Spec original: single-user, sem login, HTTP puro, Focus apenas, sem ORP,
+  TTS não sincronizado. Vários desses foram revertidos depois (abaixo).
+- Micro-pausas com pesos fixos: vírgula +0.35, fim de frase +0.9, palavra
+  longa/número +0.5, parágrafo +1.2. Configurável por UI fica para o futuro.
+- Dedupe por hash SHA-256 exato do texto aparado; título único com sufixo
+  numérico; `created_at` UTC ISO; `Cache-Control: no-store` durante o
+  desenvolvimento (revisar na fase de PWA).
 
-Levantadas na revisão profunda das Fases 1 e 1.5 (2026-07-11). Registradas
-aqui para não se perderem; as marcadas "a implementar" viram trabalho na
-Fase 1.6.
+**2026-07-12 — hardening e semântica (Fase 1.6)**
+- **WPM é efetivo, não nominal:** delay normalizado pelo peso médio do
+  documento; o número do slider é palavras/min reais. Recalibra a percepção
+  de quem usava antes (nota no README).
+- **rewind/forward navegam por frase** (unidade cognitiva), com semântica de
+  player de música no rewind. Sempre pausam.
+- **Chunk não cruza fronteira de frase/parágrafo** — chunks viram tamanho
+  variável perto de pontuação (aceito).
+- **ORP reativado** (revertendo o non-goal do spec) como toggle opcional.
 
-- **WPM é efetivo, não nominal** *(implementado em 2026-07-12)*. O delay por
-  chunk agora é `(60000/wpm) × (peso_do_chunk / peso_médio_do_documento)`, com
-  `peso_médio` calculado uma vez em `load()`. A soma dos delays do documento
-  inteiro = `N × 60000/wpm` exatamente — o WPM do slider passou a ser
-  throughput real, não mais uma taxa nominal ~15–25% otimista. **Nota
-  registrada no README:** isso recalibra a percepção — quem já tinha calibrado
-  uma velocidade confortável antes precisa recalibrar.
-- **rewind/forward pausam a reprodução e navegam por frase, não por
-  palavra/chunk** *(revisado em 2026-07-12)*. A unidade lógica de navegação
-  manual é a frase — mais importante cognitivamente do que precisão de
-  palavra. `forward()` pula para o início da próxima frase.  `rewind()`
-  segue a semântica clássica de "voltar" de player de música: se o ponteiro
-  está no meio de uma frase, volta para o início dela; se já está exatamente
-  no início, volta para o início da frase *anterior*. Sempre pausa a
-  reprodução (retomar é explícito via play). Implementado com
-  `_sentenceStart`/`_sentenceEndIndex` em `rsvp.js`, reaproveitando o flag
-  `sentenceEnd` já existente no tokenizer.
-- **Chunk não cruza parágrafo nem frase** *(implementado em 2026-07-12)*.
-  `_currentChunk` agora monta o chunk token a token e para assim que inclui um
-  token com `paragraphEnd` ou `sentenceEnd` — mesmo que isso resulte num chunk
-  menor que o "palavras por vez" configurado. Efeito colateral esperado e
-  aceito: perto de fins de frase/parágrafo, o chunk visual pode variar de
-  tamanho (1–N palavras) em vez de ser sempre fixo.
-- **Pesos das micro-pausas são constantes hardcoded** (vírgula +0.35; fim de
-  frase +0.9; palavra longa/número +0.5; parágrafo +1.2). Não configuráveis por
-  UI na v1 — eventual "intensidade de pausa" fica para um settings futuro.
-- **Dedup é hash exato** (SHA-256) do texto aparado. Quase-duplicatas (espaços
-  ou caixa diferentes) contam como documentos distintos — comportamento aceito.
-- **Unicidade de título** é imposta com sufixo numérico (`(2)`, `(3)`…),
-  inclusive no rename.
-- **`created_at` é UTC**; o cliente converte para o fuso local na exibição.
-- **`Cache-Control: no-store`** em todas as respostas é intencional nesta fase de
-  desenvolvimento (evita servir build velho). Revisar na Fase 9, quando o PWA
-  precisar de cache real de assets.
+**2026-07-12 — navegação e progresso (Fases 2–3 planejadas)**
+- Feedback de uso real: navegar capítulo inteiro de EPUB era impraticável →
+  painel de texto completo com clique por palavra, scrubber arrastável,
+  contador vivo. Tudo implementado na Fase 2.
+- Painel: clique por palavra; "fechar ao clicar" e "pausar ao abrir"
+  configuráveis, ambos desligados por padrão; modo seguir com auto-scroll.
+- Sessões de leitura: começam no primeiro play, terminam em fim de
+  documento/saída/5 min de inatividade; heartbeat ~30s.
+- Marcadores de parágrafo no scrubber: todos, sutis (validado com mockup).
 
-## Fase 1.6 — Hardening da fundação (P0 + P1 implementados, 2026-07-12)
+**2026-07-12 — modos de leitura (3ª rodada)**
+- Transporte dentro do painel (pedido do usuário ao testar) — o painel virou,
+  na prática, o modo **Flow**. Reconhecido como o retorno do Focus/Flow do
+  SwiftRead original que havia sido cortado.
+- **Modo formal com seletor Focus/Flow** (não informal).
+- **WPM separado por modo** (Flow tende a ser mais lento — olho em movimento).
+- **Flow destaca o chunk inteiro** quando palavras-por-vez > 1.
+- **TTS nos dois modos**: karaoke no Flow; no Focus, áudio + flash — com a
+  ressalva técnica de que o flash precisará seguir o relógio do áudio
+  (prosódia ≠ timer fixo), a fechar na fase de TTS.
+- Sub-decisões: modos compartilham motor/ponteiro/estado de play; trocar de
+  modo preserva posição; modo ativo persistido; ORP é conceito do Focus (não
+  se aplica ao texto corrido do Flow).
 
-Fruto da revisão profunda das Fases 1 e 1.5. Objetivo: fechar as lacunas de
-base **antes** da Fase 2, porque é a parte onde o usuário passa mais tempo e o
-custo de mudar depois é maior. P0 e P1 implementados e testados ao vivo no
-navegador; P2 é só documentação de limitações conhecidas, não implementação
-(ver abaixo) — não há mais trabalho de código pendente nesta fase.
+**2026-07-12 — pivô multiusuário (4ª rodada, esta)**
+- **Multiusuário leve:** contas individuais; biblioteca continua da casa,
+  com opção de subir documento como **privado**.
+- **Desempenho individual:** progresso, sessões e estatísticas por usuário;
+  visualização individual ou da casa toda.
+- **Coleta de estatísticas com opt-in/out por usuário** (liga/desliga).
+- **Configurações por conta** (não mais por navegador/aparelho).
+- Supersede as decisões anteriores "sem contas" e "estatísticas da casa como
+  um usuário só".
 
-### [x] P0 — fundação (correção clara, alto impacto no feel)
-- [x] Persistir WPM/chunk/fonte no localStorage e reaplicar no load (hoje só o
-      tema persiste; tudo volta a 300/1/48px toda sessão)
-- [x] Wake Lock durante a reprodução (a tela do celular apaga no meio da
-      leitura hands-free — quebra o caso de uso central; API confirmada
-      disponível)
-- [x] Tap-to-play/pause na área da palavra (gesto primário no celular; spec §4
-      previa "tap na tela")
-- [x] Histórico real de navegação: `pushState` + `popstate` + ler hash no load,
-      para o botão/gesto "voltar" do Android ir do leitor → biblioteca em vez de
-      sair do site; e recarregar dentro do leitor não cair na biblioteca
-- [x] Chunk não cruza parágrafo/frase (ver decisão acima)
-- [x] Estado de fim claro: mostrar "Fim" e completar a barra em 100% (hoje a
-      última palavra congela e a barra para pouco antes do fim)
-- [x] `preventDefault` nas setas (senão a página rola junto) + corrigir possível
-      duplo-toggle do Espaço quando um botão está focado (blur no botão após
-      clique)
-- [x] **(bônus, fora do P0 mas decidido junto)** WPM normalizado para efetivo —
-      ver "Decisões registradas" acima; `RSVPEngine` agora calcula o peso médio
-      do documento em `load()` e normaliza o delay por chunk
+---
 
-### [x] P1 — robustez (implementado, 2026-07-12)
-- [x] `PRAGMA journal_mode=WAL` (ativado uma vez em `init_db`, persiste no
-      arquivo do banco) + `busy_timeout=5000` (por conexão, em `get_connection`)
-- [x] Data em ISO com `T`/`Z` gerada explicitamente em Python (`_iso_now()`),
-      não mais via `DEFAULT` do SQL — `CREATE TABLE IF NOT EXISTS` não altera o
-      default de uma coluna já existente, então depender só do schema não
-      bastava para bancos já criados. Timestamps antigos (espaço em vez de
-      `T`) migrados automaticamente em `init_db`.
-- [x] Coluna `word_count`; biblioteca mostra "N palavras · ~M min" (estimativa
-      usa o WPM persistido do próprio usuário). Documentos antigos tiveram o
-      `word_count` recalculado a partir do `raw_text` na migração.
-- [x] Shrink-to-fit em `fitDisplayText()` (app.js) — reduz a fonte até caber
-      numa linha só, com piso de ~35% do tamanho base. **Bug encontrado e
-      corrigido durante o teste:** `showReader()` chamava `engine.load()`
-      antes de tornar a view do leitor visível, então a primeira palavra de
-      cada documento era medida com `rsvp-stage` em largura zero (elemento
-      oculto) e encolhia pro mínimo por engano, mesmo sendo uma palavra curta.
-      Corrigido invertendo a ordem: view visível primeiro, load depois.
-- [x] Limite de 500.000 caracteres em `raw_text` (413 com mensagem amigável) e
-      200 caracteres em `title` (truncado silenciosamente, sem erro)
-- [x] Modal: Esc fecha, clique no backdrop fecha (clique dentro do card não
-      fecha), Enter no campo de título salva (Enter no textarea continua
-      inserindo quebra de linha, não submete)
-- [x] Coluna `lang` adicionada (nullable, populada só na Fase 3) e
-      `PRAGMA foreign_keys=ON` habilitado por conexão — as tabelas de
-      áudio/progresso ainda não existem (Fases 3/5), então o `ON DELETE
-      CASCADE` em si fica para quando forem criadas; o que dava pra fazer
-      agora (garantir que FKs futuras realmente cascateiem) já está pronto.
+## Questões em aberto (fechar antes das fases que dependem delas)
 
-### P2 — revisado com o usuário em 2026-07-12
-- [x] **Abreviações geram falsa pausa de fim de frase** — confirmado manter
-      como limitação conhecida (já documentada em "Limitações aceitas"), sem
-      código
-- [x] **Micro-pausas configuráveis por UI** — confirmado manter adiado
-      ("settings futuro"); pesos continuam constantes hardcoded no tokenizer
-- [x] **ORP com pivô fixo** — usuário decidiu reverter o non-goal do spec e
-      implementar agora. Toggle "Destaque ORP" na UI (persistido em
-      `localStorage`), `computeOrpIndex(word)` em `rsvp.js` (heurística
-      clássica estilo Spritz: pivô em 0/1/2/3/4 conforme o comprimento da
-      palavra cresce). Com chunk size 1, layout flex com pivô ancorado na
-      posição horizontal fixa da tela (`before`/`pivot`/`after` como
-      flex-grow simétrico); com chunk size >1, cada palavra recebe seu
-      próprio pivô colorido inline, sem o alinhamento fixo (que só faz
-      sentido pra uma palavra por vez). Renderização trocou de `textContent`
-      para `innerHTML` — adicionado `escapeHtml()` e testado contra XSS
-      (texto colado com `<script>`, `&`, aspas) antes de considerar pronto.
-- [x] **Bug do ORP corrigido (2026-07-12):** ativar o ORP encolhia a fonte ao
-      mínimo. Causa: o layout ORP de palavra única estica o display pra
-      `width:100%` (pra ancorar o pivô), então o `fitDisplayText()` media o
-      container esticado e achava que sempre transbordava. Corrigido medindo a
-      largura intrínseca do texto numa sonda off-screen (`measureProbe`), em
-      vez do elemento com layout flex.
+Para a **Fase 4 (contas)**:
+1. Nível de identidade: seletor de perfil sem senha (proposta) é suficiente,
+   ou quer PIN opcional por perfil desde o início?
+2. Tema (claro/escuro) é por conta ou por aparelho? (Proposta: por conta,
+   como todo o resto — mais simples e consistente.)
+3. Direitos sobre documentos da casa: qualquer um renomeia/exclui (confiança
+   doméstica, comportamento atual) ou só quem subiu? (Privados: só o dono,
+   isso é dado.)
 
-## Feedback de uso real — deliberado e priorizado (2026-07-12)
+Para a **Fase 5 (progresso/sessões)**:
+4. Escopo do opt-out de estatísticas — proposta: desligar `collect_stats`
+   para de gravar **sessões** (event-log de desempenho), mas a **posição de
+   leitura continua salva** (é funcionalidade, não telemetria: sem ela
+   "continuar de onde parou" quebra). Confirmar se é isso.
+5. O que mais precisa entrar no registro de sessão além de WPM médio,
+   palavras avançadas, modo, início/fim? (Ex.: documento terminado sim/não
+   para taxa de conclusão?)
 
-Uso real do usuário: colou um capítulo inteiro de EPUB (convertido pra TXT)
-pra testar a experiência com um texto longo de verdade. As decisões abaixo
-foram tomadas e **reorganizaram a fila de fases** (ver "## Fases"). A
-diretriz-mãe: o módulo de leitura tem que estar praticamente completo em
-funcionalidade **antes** de partir pro TTS — e o TTS será uma fase única e já
-sincronizada ("fechar toda a questão do TTS de uma vez").
+Para a **Fase 8 (TTS)**:
+6. Como obter timestamps por palavra (forced alignment com Whisper na GPU vs
+   saída do Piper vs estimativa proporcional) — avaliar quando chegar.
 
-**O problema relatado:**
-- Navegar num texto grande foi "simplesmente impraticável" usando só
-  rewind/forward — mesmo com a navegação por frase (já implementada na Fase
-  1.6) isso não basta na escala de um capítulo inteiro: muitas frases entre o
-  ponto atual e onde o usuário quer chegar.
-- Falta noção de quanto falta pra terminar *durante* a leitura — a
-  biblioteca já mostra tempo estimado do documento inteiro (Fase 1.6 P1), mas
-  isso é antes de começar a ler, não uma contagem regressiva viva.
-- Falta uma forma de navegar *para um trecho específico* do texto importado,
-  não só sequencialmente.
+---
 
-**Ideias levantadas pelo usuário:**
-- Um painel que aparece/some com o texto original completo; clicar num
-  trecho leva exatamente pra aquele ponto no leitor RSVP.
-- Uma barra/indicador de progresso mais detalhado do que a barra fina atual.
-- Guardar os dados de progresso de leitura de um jeito que sirva no futuro
-  pra gamificação ou um dashboard — não só "continuar de onde parou".
+## Backlog imediato (entra na Fase 3)
 
-**Conexão com o que já está planejado:**
-- A "navegação para trecho específico" é essencialmente o que o spec
-  original (seção 4, antes de eu cortar escopo pro clone self-hosted) chamava
-  de **Table of Contents** e **Reader vs. Source view** — features que
-  existiam na análise do SwiftRead original mas nunca entraram no spec de
-  build enxuto que viramos a usar. Foi uma lacuna real de escopo, não uma
-  omissão deliberada.
-- "Guardar progresso pensando em gamificação/dashboard futuro" amplia
-  bastante o que a Fase 5 (hoje só "salvar posição, continuar de onde
-  parou") e a Fase 7 (estatísticas) precisam cobrir — pode exigir desenhar o
-  schema de progresso já pensando nisso, e não só um `position INTEGER`.
+- **[bug] Botão voltar do Android com o painel aberto** volta para a
+  biblioteca em vez de fechar o painel. Correção: o painel ganha entrada
+  própria no histórico (`pushState` com flag de painel; `popstate` fecha o
+  painel primeiro). No modo Flow formal, "voltar" do leitor → biblioteca,
+  como hoje.
+- **[ajuste] Controles de leitura acessíveis no Flow/painel:** WPM, tamanho
+  da fonte e palavras-por-vez hoje só existem na tela do RSVP. O painel
+  precisa expô-los (seção compacta/recolhível junto ao transporte).
+- Ambos são parte do escopo da Fase 3 (abaixo) — não são itens soltos.
 
-**Decisões tomadas (respostas do usuário em 2026-07-12):**
-1. **Clique por palavra.** O painel mostra o texto completo rolável e cada
-   palavra é um alvo de clique — pula exatamente pra ela. Sai de graça do
-   array de tokens; a palavra atual fica destacada durante a leitura.
-2. **Painel e TOC são separados; o painel é a base.** O painel de navegação
-   (palavra/parágrafo) funciona pra qualquer texto já agora. O TOC (lista de
-   capítulos) é uma camada extra que só "acende" quando o import (Fase 4)
-   trouxer EPUB/PDF com estrutura real de capítulos.
-3. **Progresso detalhado = (C): as duas coisas.** Contagem viva de
-   palavras/tempo restante *durante* a leitura **e** barra mais granular
-   (que também vira scrubber arrastável, reaproveitando o `seekFraction()`
-   que o engine já tem).
-4. **Sim, a fila mudou.** Navegação e progresso furam a fila e vêm antes do
-   import (detalhes na seção "## Fases"), porque a dor é sobre a experiência
-   *central* de leitura, não sobre ter mais formatos de entrada.
-5. **Estatísticas compartilhadas (casa como um usuário), schema pensando em
-   gamificação.** Sem tabela de perfis / sem seletor de "quem está lendo" —
-   coerente com a biblioteca única sem login. Mas o schema de progresso já
-   nasce com uma tabela de *sessões de leitura* (não só um `position INTEGER`)
-   pra guardar WPM médio ao longo do tempo, palavras lidas por dia e o que
-   mais for preciso pra reforço de hábito/dashboard futuros.
-
-**Sacada arquitetural que orienta a ordem:** o painel de texto clicável com
-"palavra atual destacada" é o **mesmo substrato** que o TTS sincronizado
-(karaoke) vai precisar. Construir a navegação primeiro (renderizar o texto com
-um `<span>` por token, marcar/rolar até o token atual) de-risca o TTS depois —
-por isso a navegação vem cedo e o TTS consolidado vem logo após o módulo de
-leitura estar completo.
-
-**Limitação nova aceita:** o RSVP avança sozinho, então "palavras lidas" pode
-inflar se o usuário der play e sair de perto (o Wake Lock mantém a tela
-ligada). É análogo à limitação das abreviações — difícil resolver sem detectar
-atenção. Mitigação possível na Fase 3 (nova): só contabilizar palavras quando
-houve interação recente. Documentado abaixo.
-
-## Deliberação de detalhamento — Fase 2 e 3 (2026-07-12, segunda rodada)
-
-Antes de codar a Fase 2, resolvemos as lacunas concretas de UX/schema que
-faltavam. Registro aqui as decisões e o raciocínio, para não se perderem.
-
-**Painel de navegação — formato:** overlay/drawer que cobre a tela (não
-split-view lateral) — decisão do agente, sem objeção; uma implementação só,
-funciona igual em celular e desktop. Split-view lateral fica pra nunca, a
-menos que sinta falta no desktop depois.
-
-**Painel — fechar ao clicar numa palavra:** **configurável por usuário**,
-com **"continuar aberto" como padrão**. Clicar pula a posição do RSVP e
-atualiza o destaque no painel, mas não fecha sozinho — o usuário fecha quando
-quiser (útil pra explorar/comparar trechos antes de decidir onde parar). Um
-toggle nas configurações do leitor (mesmo padrão visual do toggle de ORP)
-liga o fechamento automático pra quem preferir esse fluxo.
-
-**Painel — pausar automaticamente ao abrir:** **configurável por usuário**,
-com **"pode ficar aberto durante o play" como padrão**. Outro toggle nas
-configurações liga a pausa automática pra quem preferir o modo mais simples
-(painel = foto estática, sem brigar com scroll).
-
-> **Consequência importante desta escolha:** como o padrão permite o painel
-> aberto durante a reprodução, o **modo "seguir"** (auto-scroll rolando o
-> painel pra acompanhar a palavra atual enquanto o RSVP toca) precisa ser
-> implementado de verdade — não dá pra evitar simplificando o design, como eu
-> tinha cogitado antes. Regra: auto-scroll ativo por padrão quando o painel
-> abre; qualquer scroll manual do usuário desliga o auto-scroll (mostra um
-> botão flutuante "voltar pra posição atual" que religa o modo seguir ao ser
-> tocado). Vale para os dois casos (pausado ou tocando) — a diferença é que,
-> com "pausar ao abrir" desligado, o destaque se move sozinho pela tela
-> enquanto o RSVP avança.
-
-**Granularidade de clique:** por palavra (já decidido na rodada anterior).
-Parágrafos continuam visualmente separados (espaçamento) no painel, mesmo
-com o alvo de clique sendo a palavra individual.
-
-**Performance do painel:** construir o DOM completo (um `<span>` por token)
-só na primeira vez que o painel abre por documento, cachear o resultado
-(reabrir não reconstrói), um único listener de clique no container via
-event delegation. Sem virtualização por enquanto — o limite de 500k
-caracteres (~80k palavras) é caso extremo; a maioria dos textos reais
-(um capítulo) é bem menor. Revisitar só se a prática mostrar lentidão real.
-
-**Contador vivo de palavras/tempo restante:** linha pequena e discreta,
-sempre visível (não escondida atrás de pausa/painel), acima ou abaixo da
-barra de progresso, recalculada a cada chunk. `tempo restante = palavras
-restantes ÷ WPM efetivo` — preciso de verdade graças à normalização de WPM
-da Fase 1.6.
-
-**Scrubber (arrastar a barra de progresso):**
-- Arrastar pausa a reprodução, por consistência com rewind/forward/clique no
-  painel (regra geral: qualquer mudança manual de posição pausa).
-- **Marcadores de parágrafo: mostrar todos, estilo sutil** (traço fino, baixa
-  opacidade) — decisão confirmada após mockup visual. Sem lógica de corte
-  por densidade; a sutileza do CSS já resolve textos com muitos parágrafos.
-
-**Sessão de leitura (Fase 3) — parâmetros fechados:**
-- Começa no primeiro play (não simplesmente ao abrir o documento).
-- Termina em: fim do documento, saída do leitor, ou **5 minutos de
-  inatividade** (confirmado).
-- Detecção robusta sem app nativo: **heartbeat** a cada ~30s enquanto está
-  tocando, atualizando `ended_at` e palavras avançadas no servidor — limita a
-  perda de dado por fechamento abrupto da aba a ~30s, aceitável pra uma
-  feature de hábito pessoal (não precisa ser cirúrgico). Complementado por um
-  envio explícito ao pausar/sair/minimizar quando o navegador permitir.
-- Schema (rascunho):
-  ```
-  reading_sessions:
-    id, document_id, started_at, ended_at,
-    start_pointer, end_pointer, words_advanced, avg_wpm
-
-  reading_progress:                          -- separado, "continuar de onde parou"
-    document_id (unique), position, updated_at
-  ```
-  `avg_wpm` = média da configuração do slider amostrada nos heartbeats (não o
-  throughput real incluindo pausas — isso é derivável depois de
-  `words_advanced` e a duração, sem precisar guardar de novo — schema
-  mínimo).
-- "Palavras avançadas" aceita saltos grandes (clique no painel, arrastar o
-  scrubber) como parte da contagem, sem tentar diferenciar "pulei" de "li"
-  — mesma filosofia das outras limitações já aceitas (abreviações, dedup).
+---
 
 ## Fases
 
-### [x] Fase 1 — Núcleo: RSVP engine + player + paste-text
-- RSVP modo Focus: um chunk por vez, centrado, posição fixa
-- WPM: 100–1000, passo 10, ao vivo (slider)
-- Chunk size ("words at a time"): 1–4 palavras por flash, ao vivo
-- Micro-pausas (o detalhe mais importante da sensação de leitura): multiplicador
-  extra de delay em vírgulas/pontos finais/fim de frase, em palavras
-  longas/números, e em quebras de parágrafo
-- Controles do player: play/pause, rewind/forward por um chunk
-- Tema claro/escuro, controle de tamanho de fonte
-- Import: só paste de texto direto (sem upload, sem URL, sem TTS ainda) —
-  o objetivo é validar a sensação de leitura antes de qualquer outra coisa
-- **Feito:** engine + player + import por paste, dedupe por hash de conteúdo,
-  título único automático em colisão
+### Concluídas
 
-### [x] Fase 1.5 — CRUD básico da biblioteca (adicionada fora de ordem)
-- Não estava atribuída a nenhuma fase originalmente — só aparecia implícita
-  na lista de limitações aceitas ("alguém apaga um documento que outra
-  pessoa está lendo"), o que pressupõe que excluir existe, mas nunca virou
-  item de fase. Coleções/pastas continuam na Fase 6; isto aqui é só o CRUD
-  mínimo.
-- Excluir documento (`DELETE /documents/{id}`), com confirmação na UI
-- Renomear documento (`PATCH /documents/{id}`), reaproveitando a lógica de
-  título único já usada na criação
-- **Feito:** endpoints + botões de renomear/excluir na lista da biblioteca
+- **[x] Fase 1 — Núcleo RSVP** *(2026-07-11)*: engine com micro-pausas,
+  player, paste de texto, dedupe, Docker, README.
+- **[x] Fase 1.5 — CRUD da biblioteca**: renomear/excluir com confirmação;
+  correção do modal preso (`.modal[hidden]`) e dedupe por hash.
+- **[x] Fase 1.6 — Hardening da fundação**: persistência de settings, Wake
+  Lock, tap-to-play, histórico real, fronteiras de chunk, estado de fim, WPM
+  efetivo, navegação por frase, WAL/busy_timeout, timestamps ISO, word_count,
+  shrink-to-fit, limites de tamanho, melhorias de modal, colunas
+  `lang`/FKs, ORP opcional + fix do encolhimento de fonte.
+- **[x] Fase 2 — Navegação no texto** *(2026-07-12)*: painel de texto
+  completo com clique por palavra, modo seguir, scrubber arrastável com
+  marcadores, contador vivo, transporte no painel sincronizado com o leitor.
 
-> **Fila reorganizada em 2026-07-12** (ver seção "Feedback de uso real"). A
-> ordem antiga era: import → TTS → polish → progresso → pastas → stats. A
-> nova ordem completa o *módulo de leitura* (navegação + progresso) antes de
-> adicionar fontes de conteúdo, e consolida todo o TTS numa fase única já
-> sincronizada. Numeração renumerada; mapeamento pra numeração antiga
-> anotado em cada fase.
+### Futuras (ordem redesenhada em 2026-07-12; dependências anotadas)
 
-### BLOCO A — Completar a experiência de leitura (antes do TTS)
+> Racional da ordem: (A) fechar o módulo de leitura enquanto é só frontend;
+> (B) contas **antes** de qualquer dado por usuário ser gravado (evita
+> migração de progresso órfão — a regra nº 1 dos princípios); (C) conteúdo
+> depois que a fundação de dados existe (o import já nasce com visibilidade
+> privado); (D) TTS quando leitura + conteúdo estão completos; (E)
+> enriquecimento por cima dos dados acumulados.
 
-### [ ] Fase 2 — Navegação no texto *(nova; nasce do feedback de uso real)*
-O objetivo é matar a dor de "navegar um capítulo inteiro é impraticável só
-com rewind/forward". Também constrói o substrato de token→DOM que o TTS
-sincronizado (Fase 6) vai reaproveitar.
-- **Painel de texto completo**, rolável, que aparece/some (drawer/overlay —
-  no celular ocupa quase a tela toda; mesma implementação em desktop). DOM
-  completo (um `<span>` por token, com `data-idx`) construído uma vez por
-  documento e cacheado — não reconstrói a cada abertura.
-- **Clique por palavra** → move o ponteiro do RSVP exatamente pra ela. Usar
-  *event delegation* (um listener no container, não um por palavra) por
-  performance — um doc pode ter dezenas de milhares de tokens. Parágrafos
-  visualmente separados (espaçamento), mesmo com clique por palavra.
-- **Dois toggles configuráveis** (persistidos, mesmo padrão do toggle de
-  ORP): "fechar painel ao clicar" (**padrão: desligado** — painel continua
-  aberto) e "pausar ao abrir o painel" (**padrão: desligado** — pode ficar
-  aberto durante o play).
-- **Palavra atual destacada** no painel, com **auto-scroll em modo "seguir"**
-  ativo por padrão (necessário de verdade, já que o padrão permite painel
-  aberto durante o play) — desliga quando o usuário rola manualmente, mostra
-  botão flutuante "voltar pra posição atual" pra religar.
-- **Barra de progresso vira scrubber arrastável** (usa `seekFraction()`, já
-  existe no engine; arrastar pausa a reprodução) + **marcadores de parágrafo
-  sutis, todos exibidos** (sem lógica de corte por densidade — confirmado
-  após mockup visual).
-- **Contagem viva durante a leitura**: palavras restantes e tempo restante
-  (agora honesto, porque o WPM é efetivo desde a Fase 1.6) — "1.240 / 8.017
-  palavras · ~4 min restantes".
-- Lacuna de escopo reconhecida: isto é o "Reader/Source view" da análise do
-  SwiftRead original, que nunca entrou no spec enxuto. Não é o TOC (capítulos)
-  — esse vem como camada extra na Fase 4, quando houver estrutura de verdade.
+#### [ ] Fase 3 — Leitura completa: modos Focus/Flow formais
+*Depende de: nada (só frontend). Desbloqueia: TTS (substrato pronto), sessões
+com campo `mode`.*
+- Seletor Focus/Flow explícito no leitor; modo ativo persistido.
+- Trocar de modo preserva ponteiro e estado de play (mesmo motor).
+- **WPM separado por modo** (`wpmFocus` / `wpmFlow`); slider mode-aware
+  (mostra e grava o valor do modo ativo).
+- **Flow destaca o chunk inteiro** (N palavras acesas, marca pula de N em N).
+- **Controles no Flow:** WPM, fonte e palavras-por-vez acessíveis do próprio
+  painel (backlog acima).
+- **Fix do botão voltar** com painel aberto (backlog acima).
+- Settings passam a ser acessados por **módulo único** (preparação para a
+  Fase 4 trocar o storage por servidor sem retrabalho).
+- ORP segue exclusivo do Focus.
+- Fonte do Flow independente da fonte do flash RSVP (tamanhos diferentes por
+  natureza — corpo de texto vs palavra gigante).
 
-### [ ] Fase 3 — Progresso e desempenho *(era Fase 5, agora ampliada)*
-Duas coisas de formatos de dado diferentes:
-- **Posição de leitura** (continuar de onde parou): uma linha por documento
-  com o ponteiro atual. Salva ao pausar/sair; restaura ao reabrir. Biblioteca
-  compartilhada → uma posição por documento, não por pessoa (a última leitura
-  vence — limitação aceita).
-- **Sessões de leitura** (tabela nova, event-log — não é `position INTEGER`):
-  cada sessão guarda documento, início, fim, palavras avançadas, WPM usado.
-  Disso derivam WPM médio ao longo do tempo, palavras lidas por dia, e o que
-  mais a gamificação/dashboard (Fase 7) precisar. Estatísticas
-  **compartilhadas** (casa como um usuário) — sem tabela de perfis, sem
-  seletor de quem lê.
-- Definição de sessão (fechada): começa no primeiro play; encerra no fim do
-  documento, ao sair do leitor, ou após **5 minutos** de inatividade.
-  Detecção via **heartbeat** a cada ~30s enquanto toca (atualiza `ended_at` +
-  palavras avançadas), complementado por envio explícito ao
-  pausar/sair/minimizar quando o navegador permitir.
-- Contra a inflação de "palavras lidas": aceito como limitação (ver
-  "Limitações aceitas") — inclui saltos via painel/scrubber sem tentar
-  diferenciar "pulei" de "li".
-- Agregação por dia usa o fuso local sobre os timestamps ISO (UTC) já
-  padronizados na Fase 1.6.
+#### [ ] Fase 4 — Contas da casa (multiusuário leve)
+*Depende de: Fase 3 (módulo de settings). Desbloqueia: Fases 5, 6 (privado),
+9 (stats individuais).*
+- Tabela `users` + tela "quem está lendo?" (criar/escolher perfil; sem senha
+  — ver questão aberta nº 1).
+- `user_settings` no servidor; o módulo de settings do cliente passa a
+  sincronizar com a conta; settings atuais do localStorage migram para o
+  primeiro perfil criado.
+- `documents.owner_id` + `visibility` (`house` default | `private`); o modal
+  de paste ganha a opção "privado". Biblioteca lista casa + privados do
+  usuário ativo.
+- Direitos: privado só o dono vê/gerencia; casa conforme questão aberta nº 3.
+- Sem segurança real (LAN doméstica) — documentado como limitação aceita.
 
-### BLOCO B — Fontes de conteúdo
+#### [ ] Fase 5 — Progresso e sessões por usuário
+*Depende de: Fase 4 (user_id). Desbloqueia: Fase 9 (dashboard), gamificação.*
+- `reading_progress` por usuário×documento — **cada pessoa continua de onde
+  ELA parou** (o pivô dissolveu a antiga limitação de posição única por
+  documento).
+- `reading_sessions` com `user_id` e `mode`; começa no primeiro play, fecha
+  em fim/saída/5 min de inatividade; heartbeat ~30s + envio explícito ao
+  pausar/sair/minimizar.
+- **Opt-in/out de coleta por usuário** (`collect_stats`) — escopo conforme
+  questão aberta nº 4.
+- Limitações mantidas: "palavras lidas" pode inflar (play sozinho, saltos de
+  navegação contam) — sem detecção de atenção.
 
-### [ ] Fase 4 — Import: upload de arquivo + URL *(era Fase 2)*
-- Upload: PDF (PyMuPDF/`fitz`), EPUB (`ebooklib`), TXT puro.
-- URL: fetch server-side + extração via `trafilatura` — sem headless
-  browser; paywall/SPA pesada/anti-bot falham com erro claro, sem contornar.
-- `source_type` passa a distinguir `upload | url | paste`; `format` reflete o
-  tipo real.
-- **TOC (índice de capítulos)** entra aqui como camada sobre o painel da Fase
-  2: EPUB tem capítulos/headings nativos; PDF tem outline quando existe.
-  Mapear cada capítulo a um índice de token e listar no painel. Texto colado
-  continua sem TOC (não tem estrutura), só com navegação por palavra.
-- Limitações aceitas: PDF de 2 colunas / muitas notas → ordem bagunçada;
-  escaneado (sem texto) fica de fora (sem OCR).
+#### [ ] Fase 6 — Import: arquivo + URL (+ TOC)
+*Depende de: Fase 4 (visibilidade/owner no upload). Desbloqueia: TTS com
+conteúdo real, Fase 7 (biblioteca cheia pede organização).*
+- Upload PDF (PyMuPDF) / EPUB (`ebooklib`) / TXT; paste de URL via
+  `trafilatura` (sem headless browser; paywall/JS pesado falham com erro
+  claro).
+- Opção "privado" no upload. `format`/`source_type` refletem o tipo real.
+- **TOC como camada sobre o painel/Flow:** capítulos do EPUB e outline do PDF
+  mapeados a índices de token; texto colado continua sem TOC.
+- Limitações aceitas: PDF de 2 colunas/notas → ordem bagunçada; escaneado
+  (sem texto) fora — sem OCR.
 
-### [ ] Fase 5 — Pastas + busca na biblioteca *(era Fase 6)*
-- Pastas/coleções pra organizar (lacuna do SwiftRead original).
-- Busca por título/conteúdo (outra lacuna do original).
+#### [ ] Fase 7 — Pastas + busca na biblioteca
+*Depende de: nada tecnicamente; faz mais sentido após a Fase 6 encher a
+biblioteca.*
+- Pastas/coleções e busca por título/conteúdo (lacunas do SwiftRead
+  original). Respeita visibilidade (privados só na visão do dono).
 
-### BLOCO C — TTS consolidado
+#### [ ] Fase 8 — TTS sincronizado (nos dois modos)
+*Depende de: Fase 3 (substrato/modos), idealmente Fase 6 (conteúdo real).
+Consolida geração + sincronização numa fase só — "fechar toda a questão do
+TTS de uma vez".*
+- **Geração:** Kokoro-82M via Kokoro-FastAPI (Docker, rede do stack de IA,
+  RTX 5060 Ti). Cache por `(document_id, voice)` — biblioteca compartilhada
+  gera uma vez, todos reaproveitam. Auto-detecção de idioma (`langdetect`)
+  para voz padrão PT-BR/EN; troca manual por documento. Sem fila (sequencial,
+  escala doméstica). Tabela `generated_audio`.
+- **Sincronização por palavra:** timestamps cacheados junto do áudio (método
+  = questão aberta nº 6). **Flow:** karaoke no texto (marca segue a fala).
+  **Focus:** flash guiado pelo relógio do áudio (não pelo timer de WPM — a
+  prosódia não casa com ritmo fixo).
+- O relógio do highlight já é plugável desde a Fase 3 — aqui só troca a
+  fonte de tempo.
+- Stretch posterior (fase própria se necessário): Chatterbox-Turbo (MIT)
+  como segunda engine para inglês mais natural — só depois do Kokoro rodar
+  de ponta a ponta.
 
-### [ ] Fase 6 — TTS sincronizado *(funde as antigas Fases 3 + 10)*
-> Fecha "toda a questão do TTS de uma vez", já sincronizado. Discussão de
-> detalhe adiada pelo usuário ("falaremos mais sobre isso depois"); aqui só o
-> esqueleto e as decisões em aberto.
-- **Camada 1 — geração/plumbing** (era a Fase 3 independente): Kokoro-82M via
-  Kokoro-FastAPI como serviço Docker na rede do stack de IA existente
-  (RTX 5060 Ti). Cache server-side por `(document_id, voice)`. Auto-detecção
-  de idioma (`langdetect`) pra voz padrão PT-BR/EN; troca manual por
-  documento. Sem fila (sequencial). Tabela `generated_audio`.
-- **Camada 2 — sincronização por palavra** (era a Fase 10): highlight
-  karaoke reaproveitando o **substrato de token→DOM da Fase 2**. Áudio toca
-  num `<audio>` padrão; a palavra falada acende no painel.
-- **Decisão-chave em aberto** (a resolver quando chegarmos): de onde vêm os
-  timestamps por palavra? Opções — (a) *forced alignment* com Whisper na GPU
-  (texto conhecido + áudio → timestamps; viável com a 5060 Ti), (b) saída
-  nativa de duração de fonema do Piper, (c) estimativa proporcional por
-  comprimento/sílaba (cru/deriva). Cachear os timestamps junto do áudio.
-- **UX em aberto**: karaoke no painel de texto (natural, reusa a Fase 2) vs.
-  flash do RSVP guiado pelo áudio (a prosódia do TTS ≠ ritmo bom de RSVP).
-  A discutir junto com o resto do TTS.
+#### [ ] Fase 9 — Dashboard de estatísticas (eu × casa)
+*Depende de: Fase 5 (sessões acumuladas — quanto antes a 5 entrar, mais
+histórico o dashboard terá no lançamento).*
+- WPM médio ao longo do tempo, palavras/dia, tempo total, streaks, taxa de
+  conclusão; alternância **individual ↔ casa toda**; gráficos por modo
+  (Focus vs Flow) e por documento.
+- Respeita `collect_stats` (quem desligou não aparece).
+- Reverte o non-goal original "no long-term statistics dashboards".
 
-### BLOCO D — Enriquecimento
+#### [ ] Fase 10 — Teste de velocidade/compreensão embutido
+*Depende de: Fase 5 (grava resultado como dado de desempenho).*
+- WPM real medido + perguntas simples de compreensão no próprio leitor (o
+  SwiftRead só tem isso no site). Reverte o non-goal original.
 
-### [ ] Fase 7 — Dashboard de estatísticas *(era Fase 7)*
-- Consome a tabela de sessões da Fase 3: WPM médio no tempo, palavras/dia,
-  tempo total, streaks, gráficos — o material pra reforço de hábito.
-- Reverte o non-goal original ("no long-term statistics dashboards").
+#### [ ] Fase 11 — HTTPS local + PWA offline real
+*Depende de: nada; melhor após o grosso das features para cachear a versão
+estável.*
+- mkcert para contexto seguro; service worker (cache de assets, offline,
+  "adicionar à tela inicial" completo). Revisar o `Cache-Control: no-store`
+  de desenvolvimento. Reverte o "só HTTP puro" original.
 
-### [ ] Fase 8 — Teste de velocidade/compreensão embutido *(era Fase 8)*
-- WPM real (palavras ÷ tempo) + perguntas simples de compreensão, dentro do
-  leitor. Reverte o non-goal original ("no comprehension quizzes").
+#### [ ] Fase 12 — Polish
+- Overlay de atalhos (Shift+?), refinamento de tema/contraste, web manifest
+  (ícone+nome), mDNS via Avahi (`reader.local`) com fallback de IP estático
+  documentado (mDNS no Android é inconsistente — testar nos aparelhos reais).
 
-### [ ] Fase 9 — HTTPS local + PWA offline real *(era Fase 9)*
-- mkcert pra contexto seguro; service worker (cache de assets, offline,
-  "adicionar à tela inicial"). Reverte o "só HTTP puro" original. Fica depois
-  do TTS/stats porque é infra, mas ajuda o uso diário/hábito quando vier.
-
-### [ ] Fase 10 — Polish *(era Fase 4)*
-- Overlay de atalhos (Shift+?), refinamento de tema, web manifest básico
-  (ícone+nome — o service worker é da Fase 9), mDNS via Avahi (`reader.local`)
-  com fallback de IP estático documentado (mDNS no Android é inconsistente).
-
-### [ ] Fase 11 (stretch) — Chatterbox-Turbo como segunda engine TTS
-- MIT, Resemble AI — narração em inglês mais natural. Só depois do Kokoro
-  (Fase 6) rodando de ponta a ponta.
+---
 
 ## Limitações aceitas (não resolver a menos que seja pedido)
 
+- **Sem segurança real entre perfis** — qualquer um na LAN escolhe qualquer
+  perfil; é confiança doméstica por design (PIN opcional só se incomodar).
 - PDFs de duas colunas ou com muitas notas de rodapé podem extrair em ordem
-  de leitura bagunçada
-- Sem fila para gerações de TTS concorrentes — processamento sequencial é
-  suficiente em escala doméstica
-- Sem proteção contra títulos duplicados de verdade (mitigado: título
-  colidente ganha sufixo automático) nem contra uma pessoa apagar um
-  documento que outra está lendo
-- Sites com paywall, muito JS ou anti-bot vão falhar na extração de URL, sem
-  fallback
-- Documentos escaneados (PDF sem texto) são ignorados — sem OCR
-- Abreviações terminadas em ponto ("Dr.", "Sra.", "etc.") disparam a micro-pausa
-  de fim de frase indevidamente — limitação conhecida do tokenizer (ver Fase 1.6
-  P2)
-- Dedup só pega duplicata exata (mesmo hash); textos quase iguais (espaços ou
-  caixa diferentes) entram como documentos separados
-- "Palavras lidas" pode inflar: o RSVP avança sozinho, então dar play e sair
-  de perto (com o Wake Lock mantendo a tela ligada) conta leitura fantasma.
-  Mitigação parcial planejada na Fase 3 (só contar com interação recente); sem
-  detecção de atenção de verdade, não dá pra eliminar
-- Estatísticas são da casa toda, não por pessoa (biblioteca única sem login) —
-  se duas pessoas leem, WPM médio/streak/palavras-por-dia se misturam
+  bagunçada; documentos escaneados (sem texto) ficam de fora — sem OCR.
+- Sites com paywall, JS pesado ou anti-bot falham na extração de URL, sem
+  fallback.
+- Sem fila para gerações de TTS concorrentes — sequencial basta em casa.
+- Abreviações com ponto ("Dr.", "etc.") disparam micro-pausa de fim de frase
+  indevida — heurística de correção é arriscada, fica como está.
+- Dedup pega só duplicata exata (mesmo hash); quase-iguais entram separados.
+- "Palavras lidas" pode inflar: o RSVP avança sozinho (play + tela ligada) e
+  saltos de navegação contam como avanço — sem detecção de atenção real.
+- Duas pessoas no **mesmo perfil** ainda misturam posição e estatísticas
+  (a versão por usuário resolve entre perfis diferentes, não dentro de um).
+- Título colidente ganha sufixo automático em vez de erro.

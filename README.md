@@ -1,23 +1,42 @@
 # Leitura Ligeira
 
-Leitor RSVP (speed-reading) self-hosted, single-user, sem login. Rodando na
-rede local para acesso via celular pelo Wi-Fi de casa.
+Leitor de leitura rápida self-hosted para a rede de casa. Dois jeitos de ler:
+**Focus** (RSVP — palavras piscando em posição fixa, com micro-pausas
+inteligentes) e **Flow** (texto completo com a marca acompanhando a palavra —
+em formalização). Roda no PC, acessado pelo celular via Wi-Fi como web app
+comum.
 
 Backend em Python/FastAPI, frontend em JS puro (sem build step), SQLite como
-banco. Veja o [ROADMAP.md](ROADMAP.md) para a arquitetura completa, as fases
-planejadas e as decisões de design registradas ao longo do caminho.
+banco. Veja o [ROADMAP.md](ROADMAP.md) para arquitetura, fases, decisões de
+design registradas e as questões em aberto.
 
-## Status: Fase 1 + 1.5 + 1.6 (P0)
+## Status (2026-07-12): Fases 1–2 concluídas
 
-RSVP engine (modo Focus), player, import por paste de texto, e CRUD básico da
-biblioteca (renomear/excluir documentos). Sem upload de arquivo, URL ou TTS
-ainda (fases seguintes — ver ROADMAP.md).
+O que funciona hoje:
 
-**Nota sobre WPM (mudou na Fase 1.6):** o número no slider agora é o
-throughput *efetivo* — palavras/min reais, já descontando o tempo das
-micro-pausas. Antes era nominal (a taxa-base entre pausas, ~15–25% acima do
-throughput real). Se você tinha calibrado sua velocidade confortável antes
-dessa mudança, recalibre — o mesmo número agora lê mais devagar de verdade.
+- **Leitor RSVP (Focus):** WPM efetivo 100–1000 (o número do slider é
+  throughput real), palavras por vez 1–4 sem cruzar fronteira de
+  frase/parágrafo, micro-pausas por pontuação/palavra longa/parágrafo, ORP
+  opcional (letra-âncora), shrink-to-fit para palavras longas, tema
+  claro/escuro, Wake Lock (tela não apaga lendo), tap para play/pause,
+  atalhos de teclado (Espaço, setas), navegação por frase (⏮/⏭).
+- **Navegação no texto:** painel com o texto completo — toque em qualquer
+  palavra para pular exatamente para ela; palavra atual destacada com
+  rolagem automática ("modo seguir"); barra de transporte própria no painel;
+  barra de progresso arrastável (scrubber) com marcadores de parágrafo;
+  contador vivo de palavras/tempo restante.
+- **Biblioteca da casa:** colar texto, dedupe automático por conteúdo,
+  renomear/excluir, contagem de palavras e tempo estimado por item.
+
+**A seguir** (ver ROADMAP): modos Focus/Flow formais com WPM independente por
+modo; contas leves da casa (perfis sem senha) com configurações, progresso e
+estatísticas individuais; biblioteca compartilhada com opção de documento
+privado; import de PDF/EPUB/URL; TTS local sincronizado (Kokoro) nos dois
+modos.
+
+**Nota sobre WPM:** o número no slider é o throughput *efetivo* — palavras
+por minuto reais, já descontando as micro-pausas. Se você calibrou sua
+velocidade antes da Fase 1.6 (quando era nominal), recalibre.
 
 ## Rodando localmente (sem Docker)
 
@@ -27,7 +46,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Abra `http://localhost:8000` no PC, ou `http://<IP-do-PC-na-rede>:8000` no
-celular (mesma rede Wi-Fi).
+celular (mesma rede Wi-Fi). Descubra o IP com `ipconfig` (Windows) /
+`ip addr` (Linux).
 
 ## Rodando com Docker Compose
 
@@ -35,17 +55,22 @@ celular (mesma rede Wi-Fi).
 docker compose up --build
 ```
 
-## Limitações conhecidas (Fase 1)
+O banco fica em `./data/app.db` (montado como volume) — fazer backup é copiar
+um arquivo.
 
-- **Sem HTTPS.** O app é servido em HTTP puro na LAN. Isso é intencional por
-  enquanto — nada de certificado self-signed ou mkcert até uma fase futura
-  decidir habilitar PWA offline de verdade.
-- **Sem autenticação.** Biblioteca única, compartilhada, sem contas — por
-  design.
-- Descubra o IP do PC na rede local com `ipconfig` (Windows) e use esse IP no
-  celular. Um hostname amigável via mDNS (`reader.local`) está planejado para
-  uma fase futura, mas o suporte a mDNS no Android é inconsistente — teste no
-  aparelho real antes de depender disso.
+## Limitações conhecidas
+
+- **Sem HTTPS por enquanto.** HTTP puro na LAN; certificado local (mkcert) e
+  PWA offline vêm numa fase futura. Sem contexto seguro, o Android não
+  oferece o banner completo de "instalar app", mas tudo funciona na aba do
+  navegador.
+- **Sem segurança real entre perfis** (quando as contas chegarem): é seleção
+  de perfil de confiança doméstica, não autenticação — qualquer pessoa na
+  sua Wi-Fi pode abrir o app.
+- Hostname amigável via mDNS (`reader.local`) está planejado, mas o suporte
+  no Android é inconsistente — o caminho garantido é o IP fixo do PC.
+- Lista completa de limitações aceitas (e o porquê de cada uma) no
+  [ROADMAP.md](ROADMAP.md).
 
 ## Licença
 
