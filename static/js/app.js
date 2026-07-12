@@ -20,18 +20,13 @@ const scrubber = document.getElementById("scrubber");
 const paragraphMarks = document.getElementById("paragraph-marks");
 const readingProgressInfo = document.getElementById("reading-progress-info");
 
-const navOpenBtn = document.getElementById("nav-open-btn");
-const navPanel = document.getElementById("nav-panel");
-const navPanelContent = document.getElementById("nav-panel-content");
-const navPanelClose = document.getElementById("nav-panel-close");
-const navBackToPositionBtn = document.getElementById("nav-back-to-position");
-const navCloseToggle = document.getElementById("nav-close-toggle");
-const navPauseToggle = document.getElementById("nav-pause-toggle");
-const navRewindBtn = document.getElementById("nav-rewind-btn");
-const navPlayPauseBtn = document.getElementById("nav-play-pause-btn");
-const navForwardBtn = document.getElementById("nav-forward-btn");
-
+const modeFocusBtn = document.getElementById("mode-focus-btn");
+const modeFlowBtn = document.getElementById("mode-flow-btn");
 const rsvpStage = document.getElementById("rsvp-stage");
+const flowRegion = document.getElementById("flow-region");
+const flowContent = document.getElementById("flow-content");
+const flowBackToPositionBtn = document.getElementById("flow-back-to-position");
+
 const playPauseBtn = document.getElementById("play-pause-btn");
 const rewindBtn = document.getElementById("rewind-btn");
 const forwardBtn = document.getElementById("forward-btn");
@@ -42,44 +37,131 @@ const chunkSlider = document.getElementById("chunk-slider");
 const chunkValue = document.getElementById("chunk-value");
 const fontSlider = document.getElementById("font-slider");
 const fontValue = document.getElementById("font-value");
+
+const orpRow = document.getElementById("orp-row");
 const orpToggle = document.getElementById("orp-toggle");
+const navSnapBackRow = document.getElementById("nav-snap-back-row");
+const navSnapBackToggle = document.getElementById("nav-snap-back-toggle");
+const navPauseSwitchToggle = document.getElementById("nav-pause-switch-toggle");
 
 const themeToggle = document.getElementById("theme-toggle");
+
+// ---- Settings module (single source of truth) ----
+// Everything the reader remembers goes through get/set here, under one
+// naming convention. Fase 4 (contas) redirects this module to the server —
+// having one seam instead of ~6 scattered localStorage call sites is the
+// whole point of doing this now.
+const SETTINGS_PREFIX = "settings.";
+const SETTINGS_TYPES = {
+    theme: "string",
+    activeMode: "string",
+    wpmFocus: "number",
+    wpmFlow: "number",
+    chunkFocus: "number",
+    chunkFlow: "number",
+    fontFocus: "number",
+    fontFlow: "number",
+    orpEnabled: "boolean",
+    navSnapBackOnClick: "boolean",
+    navPauseOnSwitch: "boolean",
+};
+const SETTINGS_DEFAULTS = {
+    theme: "light",
+    activeMode: "focus",
+    wpmFocus: 300,
+    chunkFocus: 1,
+    fontFocus: 48,
+    chunkFlow: 1,
+    fontFlow: 20,
+    orpEnabled: false,
+    navSnapBackOnClick: false,
+    navPauseOnSwitch: false,
+};
+
+function getSetting(key) {
+    const raw = localStorage.getItem(SETTINGS_PREFIX + key);
+    if (raw === null) {
+        // Flow tends to want a slower pace than Focus (eye moves along the
+        // line) — seed it a bit below Focus's WPM the first time, instead of
+        // a fixed number that ignores what the user already calibrated.
+        if (key === "wpmFlow") return Math.max(100, getSetting("wpmFocus") - 50);
+        return SETTINGS_DEFAULTS[key];
+    }
+    if (SETTINGS_TYPES[key] === "boolean") return raw === "1";
+    if (SETTINGS_TYPES[key] === "number") return Number(raw);
+    return raw;
+}
+
+function setSetting(key, value) {
+    localStorage.setItem(SETTINGS_PREFIX + key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+}
+
+function modeKey(base) {
+    return `${base}${activeMode === "focus" ? "Focus" : "Flow"}`;
+}
 
 // ---- Theme ----
 function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
     themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
-    localStorage.setItem("theme", theme);
+    setSetting("theme", theme);
 }
-applyTheme(localStorage.getItem("theme") || "light");
+applyTheme(getSetting("theme"));
 themeToggle.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme");
     applyTheme(current === "dark" ? "light" : "dark");
 });
 
-// ---- Persisted reader settings (WPM / chunk size / font) ----
-const SETTINGS_KEYS = { wpm: "settings.wpm", chunk: "settings.chunkSize", font: "settings.fontSize" };
+// ---- Reading mode (Foco / Fluxo) ----
+// The motor (rsvp.js) has no concept of mode — it just advances a pointer
+// and emits events. Mode only decides which region renders that pointer.
+let activeMode = "focus";
+let currentDocId = null;
 
-function loadPersistedSettings() {
-    const wpm = localStorage.getItem(SETTINGS_KEYS.wpm);
-    const chunk = localStorage.getItem(SETTINGS_KEYS.chunk);
-    const font = localStorage.getItem(SETTINGS_KEYS.font);
-    if (wpm) {
-        wpmSlider.value = wpm;
-        wpmValue.textContent = wpm;
-    }
-    if (chunk) {
-        chunkSlider.value = chunk;
-        chunkValue.textContent = chunk;
-    }
-    if (font) {
-        fontSlider.value = font;
-        fontValue.textContent = font;
-        rsvpDisplay.style.fontSize = `${font}px`;
+const FONT_RANGES = {
+    focus: { min: 24, max: 96, step: 2 },
+    flow: { min: 14, max: 28, step: 1 },
+};
+
+function applyFontSliderRange() {
+    const r = FONT_RANGES[activeMode];
+    fontSlider.min = r.min;
+    fontSlider.max = r.max;
+    fontSlider.step = r.step;
+}
+
+function loadModeSliders() {
+    const wpmVal = getSetting(modeKey("wpm"));
+    wpmSlider.value = wpmVal;
+    wpmValue.textContent = wpmSlider.value;
+    engine.setWpm(Number(wpmVal));
+
+    const chunkVal = getSetting(modeKey("chunk"));
+    chunkSlider.value = chunkVal;
+    chunkValue.textContent = chunkSlider.value;
+    engine.setChunkSize(Number(chunkVal));
+
+    const fontVal = getSetting(modeKey("font"));
+    fontSlider.value = fontVal;
+    fontValue.textContent = fontSlider.value;
+    if (activeMode === "flow") {
+        flowContent.style.fontSize = `${fontVal}px`;
     }
 }
-loadPersistedSettings();
+
+function updateOrpVisibility() {
+    orpRow.hidden = activeMode !== "focus";
+}
+function updateSnapBackVisibility() {
+    navSnapBackRow.hidden = activeMode !== "flow";
+}
+
+function applyModeUI(mode) {
+    modeFocusBtn.classList.toggle("active", mode === "focus");
+    modeFlowBtn.classList.toggle("active", mode === "flow");
+    rsvpStage.hidden = mode !== "focus";
+    flowRegion.hidden = mode !== "flow";
+}
 
 // ---- Wake Lock (keep the screen on while reading hands-free) ----
 let wakeLock = null;
@@ -142,8 +224,8 @@ function fitDisplayText(text = lastChunkText) {
     rsvpDisplay.style.fontSize = `${size}px`;
 }
 
-// ---- ORP (Optimal Recognition Point) ----
-let orpEnabled = localStorage.getItem("settings.orp") === "1";
+// ---- ORP (Optimal Recognition Point) — Focus only ----
+let orpEnabled = getSetting("orpEnabled");
 
 function applyOrpToggleUI() {
     orpToggle.textContent = orpEnabled ? "Ligado" : "Desligado";
@@ -153,31 +235,31 @@ applyOrpToggleUI();
 
 orpToggle.addEventListener("click", () => {
     orpEnabled = !orpEnabled;
-    localStorage.setItem("settings.orp", orpEnabled ? "1" : "0");
+    setSetting("orpEnabled", orpEnabled);
     applyOrpToggleUI();
     engine.rerender();
 });
 
-// ---- Navigation panel settings (both default off) ----
-let navCloseOnClick = localStorage.getItem("settings.navCloseOnClick") === "1";
-let navPauseOnOpen = localStorage.getItem("settings.navPauseOnOpen") === "1";
+// ---- Flow behavior toggles (both default off) ----
+let navSnapBackOnClick = getSetting("navSnapBackOnClick");
+let navPauseOnSwitch = getSetting("navPauseOnSwitch");
 
 function applyNavToggleUI() {
-    navCloseToggle.textContent = navCloseOnClick ? "Ligado" : "Desligado";
-    navCloseToggle.classList.toggle("active", navCloseOnClick);
-    navPauseToggle.textContent = navPauseOnOpen ? "Ligado" : "Desligado";
-    navPauseToggle.classList.toggle("active", navPauseOnOpen);
+    navSnapBackToggle.textContent = navSnapBackOnClick ? "Ligado" : "Desligado";
+    navSnapBackToggle.classList.toggle("active", navSnapBackOnClick);
+    navPauseSwitchToggle.textContent = navPauseOnSwitch ? "Ligado" : "Desligado";
+    navPauseSwitchToggle.classList.toggle("active", navPauseOnSwitch);
 }
 applyNavToggleUI();
 
-navCloseToggle.addEventListener("click", () => {
-    navCloseOnClick = !navCloseOnClick;
-    localStorage.setItem("settings.navCloseOnClick", navCloseOnClick ? "1" : "0");
+navSnapBackToggle.addEventListener("click", () => {
+    navSnapBackOnClick = !navSnapBackOnClick;
+    setSetting("navSnapBackOnClick", navSnapBackOnClick);
     applyNavToggleUI();
 });
-navPauseToggle.addEventListener("click", () => {
-    navPauseOnOpen = !navPauseOnOpen;
-    localStorage.setItem("settings.navPauseOnOpen", navPauseOnOpen ? "1" : "0");
+navPauseSwitchToggle.addEventListener("click", () => {
+    navPauseOnSwitch = !navPauseOnSwitch;
+    setSetting("navPauseOnSwitch", navPauseOnSwitch);
     applyNavToggleUI();
 });
 
@@ -222,26 +304,28 @@ function renderChunk(tokens) {
         .join(" ");
 }
 
-// ---- Navigation panel (full-text, click-to-jump) ----
-// Built once per document and cached — reopening the panel doesn't rebuild
-// the DOM. One click listener on the container (event delegation) instead of
-// one per word, since a document can have tens of thousands of tokens.
-let navPanelBuiltForTokens = null;
-let navWordEls = [];
-let navFollowMode = true;
-let navAutoScrolling = false;
-let navAutoScrollTimer = null;
-let navLastHighlighted = null;
+// ---- Flow content (full text, click-to-jump) ----
+// Built once per document and cached — switching modes back and forth
+// doesn't rebuild the DOM. One click listener on the container (event
+// delegation) instead of one per word, since a document can have tens of
+// thousands of tokens.
+let flowBuiltForTokens = null;
+let flowWordEls = [];
+let flowFollowMode = true;
+let flowAutoScrolling = false;
+let flowAutoScrollTimer = null;
+let flowHighlightedEls = [];
+const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function buildNavPanel(tokens) {
-    if (navPanelBuiltForTokens === tokens) return;
-    navPanelContent.innerHTML = "";
+function buildFlowContent(tokens) {
+    if (flowBuiltForTokens === tokens) return;
+    flowContent.innerHTML = "";
     const frag = document.createDocumentFragment();
     let paragraphEl = document.createElement("div");
-    paragraphEl.className = "nav-paragraph";
+    paragraphEl.className = "flow-paragraph";
     tokens.forEach((token, idx) => {
         const span = document.createElement("span");
-        span.className = "nav-word";
+        span.className = "flow-word";
         span.textContent = token.text;
         span.dataset.idx = idx;
         paragraphEl.appendChild(span);
@@ -249,14 +333,20 @@ function buildNavPanel(tokens) {
         if (token.paragraphEnd) {
             frag.appendChild(paragraphEl);
             paragraphEl = document.createElement("div");
-            paragraphEl.className = "nav-paragraph";
+            paragraphEl.className = "flow-paragraph";
         }
     });
     frag.appendChild(paragraphEl);
-    navPanelContent.appendChild(frag);
-    navWordEls = navPanelContent.querySelectorAll(".nav-word");
-    navPanelBuiltForTokens = tokens;
-    navLastHighlighted = null;
+    flowContent.appendChild(frag);
+    flowWordEls = flowContent.querySelectorAll(".flow-word");
+    flowBuiltForTokens = tokens;
+    flowHighlightedEls = [];
+}
+
+function ensureFlowBuilt() {
+    const tokens = engine.getTokens();
+    if (!tokens.length) return;
+    buildFlowContent(tokens);
 }
 
 function buildParagraphMarks(tokens) {
@@ -274,67 +364,61 @@ function buildParagraphMarks(tokens) {
     paragraphMarks.appendChild(frag);
 }
 
-function scrollToCurrentWord(behavior) {
-    const el = navWordEls[engine.pointer];
+function scrollFlowToCurrentWord(behavior) {
+    const el = flowHighlightedEls[0];
     if (!el) return;
-    navAutoScrolling = true;
-    el.scrollIntoView({ block: "center", behavior });
-    clearTimeout(navAutoScrollTimer);
-    navAutoScrollTimer = setTimeout(() => {
-        navAutoScrolling = false;
+    flowAutoScrolling = true;
+    el.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : behavior });
+    clearTimeout(flowAutoScrollTimer);
+    flowAutoScrollTimer = setTimeout(() => {
+        flowAutoScrolling = false;
     }, 200);
 }
 
-function updateNavHighlight() {
-    if (navPanel.hidden || !navWordEls.length) return;
-    const el = navWordEls[engine.pointer];
-    if (!el) return;
-    if (navLastHighlighted) navLastHighlighted.classList.remove("nav-current");
-    el.classList.add("nav-current");
-    navLastHighlighted = el;
-    if (navFollowMode) scrollToCurrentWord("auto");
+// Highlights the *whole* chunk currently on screen (all N words when
+// "palavras por vez" > 1), not just its first word — so Flow matches what
+// Focus is actually flashing instead of looking like it skipped words.
+function updateFlowHighlight(chunkTokens) {
+    if (flowRegion.hidden || !flowWordEls.length) return;
+    const start = engine.pointer;
+    const count = chunkTokens ? chunkTokens.length : 1;
+    flowHighlightedEls.forEach((el) => el.classList.remove("flow-current"));
+    flowHighlightedEls = [];
+    for (let i = start; i < start + count && i < flowWordEls.length; i++) {
+        const el = flowWordEls[i];
+        if (el) {
+            el.classList.add("flow-current");
+            flowHighlightedEls.push(el);
+        }
+    }
+    if (flowFollowMode && flowHighlightedEls.length) {
+        scrollFlowToCurrentWord("auto");
+    }
 }
 
-navPanelContent.addEventListener("scroll", () => {
-    if (navAutoScrolling) return;
-    if (navFollowMode) {
-        navFollowMode = false;
-        navBackToPositionBtn.hidden = false;
+flowContent.addEventListener("scroll", () => {
+    if (flowAutoScrolling) return;
+    if (flowFollowMode) {
+        flowFollowMode = false;
+        flowBackToPositionBtn.hidden = false;
     }
 });
 
-navBackToPositionBtn.addEventListener("click", () => {
-    navFollowMode = true;
-    navBackToPositionBtn.hidden = true;
-    scrollToCurrentWord("smooth");
+flowBackToPositionBtn.addEventListener("click", () => {
+    flowFollowMode = true;
+    flowBackToPositionBtn.hidden = true;
+    scrollFlowToCurrentWord("smooth");
 });
 
-navPanelContent.addEventListener("click", (e) => {
-    const wordEl = e.target.closest(".nav-word");
+flowContent.addEventListener("click", (e) => {
+    const wordEl = e.target.closest(".flow-word");
     if (!wordEl) return;
     engine.seekToIndex(Number(wordEl.dataset.idx));
     refreshPlayButton();
-    if (navCloseOnClick) closeNavPanel();
-});
-
-function openNavPanel() {
-    const tokens = engine.getTokens();
-    if (!tokens.length) return; // nothing loaded yet — never cache an empty build
-    buildNavPanel(tokens);
-    if (navPauseOnOpen) {
-        engine.pause();
-        refreshPlayButton();
+    if (navSnapBackOnClick) {
+        modeFocusBtn.click();
     }
-    navFollowMode = true;
-    navBackToPositionBtn.hidden = true;
-    navPanel.hidden = false;
-    updateNavHighlight();
-    scrollToCurrentWord("auto");
-}
-
-function closeNavPanel() {
-    navPanel.hidden = true;
-}
+});
 
 function updateLiveCounter(pointer, total) {
     if (!total) {
@@ -349,36 +433,38 @@ function updateLiveCounter(pointer, total) {
         `~${minutesLeft} min restantes`;
 }
 
-navOpenBtn.addEventListener("click", openNavPanel);
-navPanelClose.addEventListener("click", closeNavPanel);
-
 // ---- RSVP engine wiring ----
+// activeMode decides which region a chunk render goes to; the motor itself
+// never needs to know. Reading activeMode fresh on every call (not captured)
+// means a mode switch takes effect on the very next tick without any extra
+// wiring.
 const engine = new RSVPEngine({
     onChunk: (tokens) => {
-        const plain = tokens.map((t) => t.text).join(" ");
-        renderChunk(tokens);
-        fitDisplayText(plain);
+        if (activeMode === "focus") {
+            const plain = tokens.map((t) => t.text).join(" ");
+            renderChunk(tokens);
+            fitDisplayText(plain);
+        } else {
+            updateFlowHighlight(tokens);
+        }
     },
     onProgress: (fraction, pointer, total) => {
         progressFill.style.width = `${Math.min(100, fraction * 100)}%`;
         updateLiveCounter(pointer, total);
-        updateNavHighlight();
     },
     onEnd: () => {
         refreshPlayButton();
-        rsvpDisplay.classList.remove("orp-single");
-        rsvpDisplay.textContent = "Fim";
-        fitDisplayText("Fim");
+        if (activeMode === "focus") {
+            rsvpDisplay.classList.remove("orp-single");
+            rsvpDisplay.textContent = "Fim";
+            fitDisplayText("Fim");
+        }
         progressFill.style.width = "100%";
     },
 });
 
 function refreshPlayButton() {
-    // Two transport bars share one engine: the main reader controls and the
-    // panel controls. Keep both play icons in sync.
-    const icon = engine.playing ? "⏸" : "▶";
-    playPauseBtn.textContent = icon;
-    navPlayPauseBtn.textContent = icon;
+    playPauseBtn.textContent = engine.playing ? "⏸" : "▶";
     if (engine.playing) {
         acquireWakeLock();
     } else {
@@ -405,10 +491,40 @@ function doForward(btn) {
 playPauseBtn.addEventListener("click", () => doTogglePlay(playPauseBtn));
 rewindBtn.addEventListener("click", () => doRewind(rewindBtn));
 forwardBtn.addEventListener("click", () => doForward(forwardBtn));
-navPlayPauseBtn.addEventListener("click", () => doTogglePlay(navPlayPauseBtn));
-navRewindBtn.addEventListener("click", () => doRewind(navRewindBtn));
-navForwardBtn.addEventListener("click", () => doForward(navForwardBtn));
 rsvpStage.addEventListener("click", () => doTogglePlay());
+
+// ---- Mode switching ----
+// Entering Flow pushes a history entry; the Foco button (and the Android
+// back gesture) pop it via history.back() instead of pushing another entry
+// — mirrors the library/reader back-button pattern already in this app.
+function switchMode(mode, { push = true } = {}) {
+    if (mode === activeMode) return;
+    if (navPauseOnSwitch && engine.playing) {
+        engine.pause();
+    }
+    activeMode = mode;
+    setSetting("activeMode", mode);
+    applyModeUI(mode);
+    applyFontSliderRange();
+    loadModeSliders();
+    updateOrpVisibility();
+    updateSnapBackVisibility();
+    if (mode === "flow") {
+        ensureFlowBuilt();
+    }
+    engine.rerender();
+    refreshPlayButton();
+    if (push) {
+        history.pushState({ view: "reader", id: currentDocId, mode }, "", `#/read/${currentDocId}/${mode}`);
+    }
+}
+
+modeFocusBtn.addEventListener("click", () => {
+    if (activeMode === "flow") history.back();
+});
+modeFlowBtn.addEventListener("click", () => {
+    if (activeMode === "focus") switchMode("flow", { push: true });
+});
 
 // ---- Scrubber (draggable progress bar) ----
 function seekFromPointerEvent(e) {
@@ -438,17 +554,21 @@ scrubber.addEventListener("pointercancel", () => {
 wpmSlider.addEventListener("input", () => {
     engine.setWpm(Number(wpmSlider.value));
     wpmValue.textContent = wpmSlider.value;
-    localStorage.setItem(SETTINGS_KEYS.wpm, wpmSlider.value);
+    setSetting(modeKey("wpm"), wpmSlider.value);
 });
 chunkSlider.addEventListener("input", () => {
     engine.setChunkSize(Number(chunkSlider.value));
     chunkValue.textContent = chunkSlider.value;
-    localStorage.setItem(SETTINGS_KEYS.chunk, chunkSlider.value);
+    setSetting(modeKey("chunk"), chunkSlider.value);
 });
 fontSlider.addEventListener("input", () => {
     fontValue.textContent = fontSlider.value;
-    localStorage.setItem(SETTINGS_KEYS.font, fontSlider.value);
-    fitDisplayText();
+    setSetting(modeKey("font"), fontSlider.value);
+    if (activeMode === "flow") {
+        flowContent.style.fontSize = `${fontSlider.value}px`;
+    } else {
+        fitDisplayText();
+    }
 });
 
 document.addEventListener("keydown", (e) => {
@@ -475,55 +595,76 @@ document.addEventListener("keydown", (e) => {
 
 // ---- Navigation ----
 // Real history entries (pushState) so the Android back gesture/button moves
-// reader → library instead of leaving the site, and reloading inside the
-// reader (or following a #/read/{id} link) opens straight to that document.
+// reader → library instead of leaving the site, reloading inside the reader
+// (or following a #/read/{id}/{mode} link) opens straight to that document
+// and mode, and Fluxo→Foco→biblioteca pops one level at a time.
 function showLibrary(push = true) {
     engine.pause();
     readerView.hidden = true;
     libraryView.hidden = false;
+    currentDocId = null;
     loadLibrary();
     if (push) history.pushState({ view: "library" }, "", "#/");
 }
 
-async function showReader(id, push = true) {
+async function showReader(id, push = true, mode = "focus") {
     const res = await fetch(`/documents/${id}`);
     if (!res.ok) {
         alert("Não foi possível carregar o documento.");
         return;
     }
     const doc = await res.json();
+    currentDocId = id;
     readerTitle.textContent = doc.title;
-    // Reveal the reader view *before* loading — engine.load() renders the
-    // first chunk synchronously via onChunk, and fitDisplayText() needs
-    // rsvp-stage to already have real layout dimensions (a hidden element
-    // measures 0-width, which forced every opening word to shrink to the
-    // minimum font size).
+    // Reveal the reader view — and the correct mode region — *before*
+    // loading. engine.load() renders the first chunk synchronously via
+    // onChunk, and fitDisplayText() needs rsvp-stage to already have real
+    // layout dimensions (a hidden element measures 0-width, which forced
+    // every opening word to shrink to the minimum font size).
     libraryView.hidden = true;
     readerView.hidden = false;
-    closeNavPanel();
-    navPanelBuiltForTokens = null;
-    engine.setWpm(Number(wpmSlider.value));
-    engine.setChunkSize(Number(chunkSlider.value));
+    activeMode = mode;
+    setSetting("activeMode", mode);
+    applyModeUI(mode);
+    applyFontSliderRange();
+    loadModeSliders();
+    updateOrpVisibility();
+    updateSnapBackVisibility();
+
+    flowBuiltForTokens = null; // new document — Flow's cached spans are stale
     engine.load(doc.raw_text);
     buildParagraphMarks(engine.getTokens());
+    if (mode === "flow") {
+        // load() already fired one render before Flow's spans existed for
+        // these tokens (buildFlowContent needs the tokens engine.load() just
+        // produced) — build now, then render again so the highlight lands.
+        ensureFlowBuilt();
+        engine.rerender();
+    }
     refreshPlayButton();
-    if (push) history.pushState({ view: "reader", id }, "", `#/read/${id}`);
+    if (push) history.pushState({ view: "reader", id, mode }, "", `#/read/${id}/${mode}`);
 }
 
 window.addEventListener("popstate", (e) => {
     const state = e.state;
     if (state && state.view === "reader") {
-        showReader(state.id, false);
+        if (state.id === currentDocId) {
+            switchMode(state.mode, { push: false });
+        } else {
+            showReader(state.id, false, state.mode || "focus");
+        }
     } else {
         showLibrary(false);
     }
 });
 
 function initFromLocation() {
-    const match = location.hash.match(/^#\/read\/(\d+)$/);
+    const match = location.hash.match(/^#\/read\/(\d+)(?:\/(focus|flow))?$/);
     if (match) {
-        history.replaceState({ view: "reader", id: Number(match[1]) }, "", location.hash);
-        showReader(Number(match[1]), false);
+        const id = Number(match[1]);
+        const mode = match[2] || "focus";
+        history.replaceState({ view: "reader", id, mode }, "", `#/read/${id}/${mode}`);
+        showReader(id, false, mode);
     } else {
         history.replaceState({ view: "library" }, "", "#/");
         showLibrary(false);
@@ -543,7 +684,7 @@ async function apiErrorMessage(res, fallback) {
 }
 
 function estimatedMinutes(wordCount) {
-    const wpm = Number(wpmSlider.value) || 300;
+    const wpm = getSetting("wpmFocus") || 300;
     return Math.max(1, Math.round(wordCount / wpm));
 }
 
@@ -634,9 +775,8 @@ docTitleInput.addEventListener("keydown", (e) => {
     }
 });
 document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-        if (!newDocModal.hidden) closeModal();
-        else if (!navPanel.hidden) closeNavPanel();
+    if (e.key === "Escape" && !newDocModal.hidden) {
+        closeModal();
     }
 });
 

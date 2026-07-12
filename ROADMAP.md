@@ -333,7 +333,7 @@ Os dois itens de feedback abaixo deixam de ser correções pontuais e são
 > privado); (D) TTS quando leitura + conteúdo estão completos; (E)
 > enriquecimento por cima dos dados acumulados.
 
-#### [ ] Fase 3 — Leitura completa: modos Foco/Fluxo formais
+#### [x] Fase 3 — Leitura completa: modos Foco/Fluxo formais *(implementada 2026-07-12, aguardando teste do usuário)*
 *Depende de: nada (só frontend). Desbloqueia: TTS (substrato/relógio pronto),
 sessões com campo `mode`, Fase 4 (módulo de settings).*
 Desenho fechado na 6ª rodada de deliberação (ver log de decisões).
@@ -373,6 +373,18 @@ Desenho fechado na 6ª rodada de deliberação (ver log de decisões).
 **Não incluído (evitar over-engineering):** a abstração de relógio de áudio do
 TTS não entra aqui — mas o avanço do ponteiro fica centralizado no motor para
 a Fase 8 plugar o áudio sem cirurgia. Modo padrão de novo leitor = Foco.
+
+**Implementado e testado ao vivo no navegador** (2026-07-12): módulo único de
+settings (`getSetting`/`setSetting`, prefixo `settings.`); `#rsvp-stage` e
+`#flow-region` como região que troca (com `.rsvp-stage[hidden]{display:none}`
+corrigido — o mesmo bug de `display` vs `[hidden]` já visto no modal); URL/
+histórico com `#/read/{id}/{mode}`; botão voltar confirmado Fluxo→Foco→
+biblioteca; WPM/chunk/fonte mode-aware com `wpm_flow` derivado de
+`wpm_focus - 50` na primeira vez; destaque do chunk inteiro no Fluxo
+confirmado com chunk=2; toggles de snap-back e pausar-ao-trocar validados;
+scrubber e auto-scroll/botão-de-retorno funcionando na nova estrutura;
+persistência confirmada após reload completo. Nenhum código commitado ainda
+— aguardando teste e autorização do usuário.
 
 #### [ ] Fase 4 — Contas da casa (multiusuário leve, com senha)
 *Depende de: Fase 3 (módulo de settings). Desbloqueia: Fases 5, 6 (privado),

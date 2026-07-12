@@ -38,11 +38,19 @@
     <div class="reader-topbar">
         <button id="back-btn" class="icon-btn" title="Voltar à biblioteca">←</button>
         <span id="reader-title" class="reader-title"></span>
-        <button id="nav-open-btn" class="icon-btn" title="Navegar no texto">📄</button>
+        <div class="mode-switch">
+            <button id="mode-focus-btn" class="mode-btn active" data-mode="focus">Foco</button>
+            <button id="mode-flow-btn" class="mode-btn" data-mode="flow">Fluxo</button>
+        </div>
     </div>
 
     <div id="rsvp-stage" class="rsvp-stage" title="Toque para play/pause">
         <div id="rsvp-display" class="rsvp-display">Pronto</div>
+    </div>
+
+    <div id="flow-region" class="flow-region" hidden>
+        <div id="flow-content" class="flow-content"></div>
+        <button id="flow-back-to-position" class="flow-back-btn" hidden>↓ Voltar pra posição atual</button>
     </div>
 
     <div id="scrubber" class="scrubber">
@@ -73,32 +81,18 @@
                 <label for="font-slider">Tamanho da fonte: <span id="font-value">48</span>px</label>
                 <input id="font-slider" type="range" min="24" max="96" step="2" value="48" />
             </div>
-            <div class="slider-row toggle-row">
+            <div id="orp-row" class="slider-row toggle-row">
                 <label for="orp-toggle">Destaque ORP (letra-âncora)</label>
                 <button id="orp-toggle" class="icon-btn" title="Ativar/desativar ORP">Desligado</button>
             </div>
-            <div class="slider-row toggle-row">
-                <label for="nav-close-toggle">Fechar painel ao clicar numa palavra</label>
-                <button id="nav-close-toggle" class="icon-btn" title="Fechar o painel de navegação automaticamente ao clicar numa palavra">Desligado</button>
+            <div id="nav-snap-back-row" class="slider-row toggle-row" hidden>
+                <label for="nav-snap-back-toggle">Voltar ao Foco ao clicar numa palavra</label>
+                <button id="nav-snap-back-toggle" class="icon-btn" title="Ao clicar numa palavra no Fluxo, volta pro Foco">Desligado</button>
             </div>
             <div class="slider-row toggle-row">
-                <label for="nav-pause-toggle">Pausar ao abrir o painel</label>
-                <button id="nav-pause-toggle" class="icon-btn" title="Pausar a leitura automaticamente ao abrir o painel de navegação">Desligado</button>
+                <label for="nav-pause-switch-toggle">Pausar ao trocar de modo</label>
+                <button id="nav-pause-switch-toggle" class="icon-btn" title="Pausar a leitura automaticamente ao trocar entre Foco e Fluxo">Desligado</button>
             </div>
-        </div>
-    </div>
-
-    <div id="nav-panel" class="nav-panel" hidden>
-        <div class="nav-panel-header">
-            <span>Navegar no texto</span>
-            <button id="nav-panel-close" class="icon-btn" title="Fechar">✕</button>
-        </div>
-        <div id="nav-panel-content" class="nav-panel-content"></div>
-        <button id="nav-back-to-position" class="nav-back-btn" hidden>↓ Voltar pra posição atual</button>
-        <div class="nav-panel-transport">
-            <button id="nav-rewind-btn" class="icon-btn" title="Voltar ao início da frase">⏮</button>
-            <button id="nav-play-pause-btn" class="icon-btn play-btn" title="Play/Pause">▶</button>
-            <button id="nav-forward-btn" class="icon-btn" title="Avançar para a próxima frase">⏭</button>
         </div>
     </div>
 </main>
