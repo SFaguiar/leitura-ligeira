@@ -274,3 +274,43 @@ body {
 .slider-row input[type="range"] {
     width: 100%;
 }
+
+.toggle-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.toggle-row .icon-btn {
+    min-width: 5.5rem;
+}
+
+.toggle-row .icon-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+/* ORP — Optimal Recognition Point pivot letter */
+.rsvp-display.orp-single {
+    display: flex;
+    align-items: baseline;
+    width: 100%;
+}
+
+.orp-before {
+    flex: 1 1 0;
+    text-align: right;
+    white-space: pre;
+}
+
+.orp-after {
+    flex: 1 1 0;
+    text-align: left;
+    white-space: pre;
+}
+
+.orp-pivot {
+    flex: 0 0 auto;
+    color: var(--accent);
+}

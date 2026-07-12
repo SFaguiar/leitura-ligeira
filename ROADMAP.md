@@ -161,12 +161,80 @@ navegador; P2 é só documentação de limitações conhecidas, não implementa�
       CASCADE` em si fica para quando forem criadas; o que dava pra fazer
       agora (garantir que FKs futuras realmente cascateiem) já está pronto.
 
-### P2 — documentar como limitação / adiar
-- [ ] Abreviações ("Dr.", "Sra.", "etc.", "p.ex.") geram falsa pausa de fim de
-      frase — limitação conhecida, heurística de correção é arriscada; não
-      resolver agora
-- [ ] Micro-pausas configuráveis por UI — settings futuro
-- [ ] ORP com pivô fixo (letra-âncora) — fora do escopo por decisão do spec
+### P2 — revisado com o usuário em 2026-07-12
+- [x] **Abreviações geram falsa pausa de fim de frase** — confirmado manter
+      como limitação conhecida (já documentada em "Limitações aceitas"), sem
+      código
+- [x] **Micro-pausas configuráveis por UI** — confirmado manter adiado
+      ("settings futuro"); pesos continuam constantes hardcoded no tokenizer
+- [x] **ORP com pivô fixo** — usuário decidiu reverter o non-goal do spec e
+      implementar agora. Toggle "Destaque ORP" na UI (persistido em
+      `localStorage`), `computeOrpIndex(word)` em `rsvp.js` (heurística
+      clássica estilo Spritz: pivô em 0/1/2/3/4 conforme o comprimento da
+      palavra cresce). Com chunk size 1, layout flex com pivô ancorado na
+      posição horizontal fixa da tela (`before`/`pivot`/`after` como
+      flex-grow simétrico); com chunk size >1, cada palavra recebe seu
+      próprio pivô colorido inline, sem o alinhamento fixo (que só faz
+      sentido pra uma palavra por vez). Renderização trocou de `textContent`
+      para `innerHTML` — adicionado `escapeHtml()` e testado contra XSS
+      (texto colado com `<script>`, `&`, aspas) antes de considerar pronto.
+
+## Feedback de uso real — pendente de deliberação (registrado em 2026-07-12)
+
+Uso real do usuário: colou um capítulo inteiro de EPUB (convertido pra TXT)
+pra testar a experiência com um texto longo de verdade. Ainda **não
+implementado** — só registrado aqui para discutirmos escopo/prioridade na
+próxima sessão, antes de qualquer código.
+
+**O problema relatado:**
+- Navegar num texto grande foi "simplesmente impraticável" usando só
+  rewind/forward — mesmo com a navegação por frase (já implementada na Fase
+  1.6) isso não basta na escala de um capítulo inteiro: muitas frases entre o
+  ponto atual e onde o usuário quer chegar.
+- Falta noção de quanto falta pra terminar *durante* a leitura — a
+  biblioteca já mostra tempo estimado do documento inteiro (Fase 1.6 P1), mas
+  isso é antes de começar a ler, não uma contagem regressiva viva.
+- Falta uma forma de navegar *para um trecho específico* do texto importado,
+  não só sequencialmente.
+
+**Ideias levantadas pelo usuário:**
+- Um painel que aparece/some com o texto original completo; clicar num
+  trecho leva exatamente pra aquele ponto no leitor RSVP.
+- Uma barra/indicador de progresso mais detalhado do que a barra fina atual.
+- Guardar os dados de progresso de leitura de um jeito que sirva no futuro
+  pra gamificação ou um dashboard — não só "continuar de onde parou".
+
+**Conexão com o que já está planejado:**
+- A "navegação para trecho específico" é essencialmente o que o spec
+  original (seção 4, antes de eu cortar escopo pro clone self-hosted) chamava
+  de **Table of Contents** e **Reader vs. Source view** — features que
+  existiam na análise do SwiftRead original mas nunca entraram no spec de
+  build enxuto que viramos a usar. Foi uma lacuna real de escopo, não uma
+  omissão deliberada.
+- "Guardar progresso pensando em gamificação/dashboard futuro" amplia
+  bastante o que a Fase 5 (hoje só "salvar posição, continuar de onde
+  parou") e a Fase 7 (estatísticas) precisam cobrir — pode exigir desenhar o
+  schema de progresso já pensando nisso, e não só um `position INTEGER`.
+
+**Perguntas em aberto para a próxima sessão:**
+1. O painel de "texto original clicável" deveria mostrar o texto corrido
+   completo, ou ser estruturado por parágrafo (mais fácil de navegar, exige
+   mapear cada parágrafo a um índice de token)?
+2. Isso deveria também servir de Table of Contents quando a Fase 2 trouxer
+   EPUB/PDF (que têm capítulos/headings de verdade), ou são features
+   separadas?
+3. "Progresso mais detalhado" é: (a) contagem viva de palavras/tempo restante
+   durante a leitura, (b) uma barra com mais granularidade (marcações por
+   parágrafo), ou (c) as duas coisas?
+4. Isso muda a prioridade da fila? Hoje a ordem é Fase 2 (import) → Fase 5
+   (progresso). Dado que o problema relatado é sobre a experiência *central*
+   de leitura (não sobre importar mais formatos), faz sentido esse item
+   furar a fila como a Fase 1.5/1.6 furaram?
+5. Se vamos desenhar o schema de progresso pensando em gamificação/dashboard
+   futuros, o que exatamente precisa ser guardado por sessão de leitura (só
+   posição final? início/fim de cada sessão? WPM usado? palavras lidas por
+   dia)? Vale a pena decidir isso antes de criar a tabela na Fase 5, pra não
+   ter que migrar depois.
 
 ## Fases
 

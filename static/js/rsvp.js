@@ -7,6 +7,18 @@ function endsSentence(word) {
     return /[.!?]["')\]]?$/.test(word);
 }
 
+// Classic Spritz-style Optimal Recognition Point: the pivot letter sits
+// slightly left of center, further in for longer words. Reversing the
+// original spec's "no ORP" non-goal per explicit user decision.
+export function computeOrpIndex(word) {
+    const len = word.length;
+    if (len <= 1) return 0;
+    if (len <= 5) return 1;
+    if (len <= 9) return 2;
+    if (len <= 13) return 3;
+    return 4;
+}
+
 function computeWeight(word) {
     let weight = 1.0;
     const letters = word.replace(/[^\p{L}\p{N}]/gu, "");
@@ -77,6 +89,12 @@ export class RSVPEngine {
         this.avgWeight = this.tokens.length
             ? chunkWeight(this.tokens) / this.tokens.length
             : 1;
+        this._render();
+    }
+
+    // Re-emit the currently displayed chunk without advancing — used when a
+    // display-only setting (e.g. ORP) changes while paused.
+    rerender() {
         this._render();
     }
 

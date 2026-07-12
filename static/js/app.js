@@ -1,4 +1,4 @@
-import { RSVPEngine } from "./rsvp.js";
+import { RSVPEngine, computeOrpIndex } from "./rsvp.js";
 
 const libraryView = document.getElementById("library-view");
 const readerView = document.getElementById("reader-view");
@@ -28,6 +28,7 @@ const chunkSlider = document.getElementById("chunk-slider");
 const chunkValue = document.getElementById("chunk-value");
 const fontSlider = document.getElementById("font-slider");
 const fontValue = document.getElementById("font-value");
+const orpToggle = document.getElementById("orp-toggle");
 
 const themeToggle = document.getElementById("theme-toggle");
 
@@ -110,10 +111,67 @@ function fitDisplayText() {
     rsvpDisplay.style.whiteSpace = "";
 }
 
+// ---- ORP (Optimal Recognition Point) ----
+let orpEnabled = localStorage.getItem("settings.orp") === "1";
+
+function applyOrpToggleUI() {
+    orpToggle.textContent = orpEnabled ? "Ligado" : "Desligado";
+    orpToggle.classList.toggle("active", orpEnabled);
+}
+applyOrpToggleUI();
+
+orpToggle.addEventListener("click", () => {
+    orpEnabled = !orpEnabled;
+    localStorage.setItem("settings.orp", orpEnabled ? "1" : "0");
+    applyOrpToggleUI();
+    engine.rerender();
+});
+
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function splitOrp(word) {
+    const idx = computeOrpIndex(word);
+    return {
+        before: word.slice(0, idx),
+        pivot: word.slice(idx, idx + 1),
+        after: word.slice(idx + 1),
+    };
+}
+
+function renderChunk(tokens) {
+    rsvpDisplay.classList.remove("orp-single");
+    if (!orpEnabled) {
+        rsvpDisplay.textContent = tokens.map((t) => t.text).join(" ");
+        return;
+    }
+    if (tokens.length === 1) {
+        rsvpDisplay.classList.add("orp-single");
+        const { before, pivot, after } = splitOrp(tokens[0].text);
+        rsvpDisplay.innerHTML =
+            `<span class="orp-before">${escapeHtml(before)}</span>` +
+            `<span class="orp-pivot">${escapeHtml(pivot)}</span>` +
+            `<span class="orp-after">${escapeHtml(after)}</span>`;
+        return;
+    }
+    rsvpDisplay.innerHTML = tokens
+        .map((t) => {
+            const { before, pivot, after } = splitOrp(t.text);
+            return `${escapeHtml(before)}<span class="orp-pivot">${escapeHtml(pivot)}</span>${escapeHtml(after)}`;
+        })
+        .join(" ");
+}
+
 // ---- RSVP engine wiring ----
 const engine = new RSVPEngine({
     onChunk: (tokens) => {
-        rsvpDisplay.textContent = tokens.map((t) => t.text).join(" ");
+        renderChunk(tokens);
         fitDisplayText();
     },
     onProgress: (fraction) => {
