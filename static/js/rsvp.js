@@ -3,6 +3,10 @@
 // tuned so long words, punctuation and paragraph breaks slow the flash down
 // instead of flying past at a constant per-word rate.
 
+function endsSentence(word) {
+    return /[.!?]["')\]]?$/.test(word);
+}
+
 function computeWeight(word) {
     let weight = 1.0;
     const letters = word.replace(/[^\p{L}\p{N}]/gu, "");
@@ -13,7 +17,7 @@ function computeWeight(word) {
     if (/[,;:]$/.test(word)) {
         weight += 0.35;
     }
-    if (/[.!?]["')\]]?$/.test(word)) {
+    if (endsSentence(word)) {
         weight += 0.9;
     }
     return weight;
@@ -35,6 +39,7 @@ export function tokenize(text) {
                 text: word,
                 weight: computeWeight(word),
                 paragraphEnd: isLastInParagraph && pIndex < paragraphs.length - 1,
+                sentenceEnd: endsSentence(word),
             });
         });
     });
@@ -56,6 +61,10 @@ export class RSVPEngine {
         this.chunkSize = 1;
         this.playing = false;
         this.timer = null;
+        // Average per-word weight of the loaded document — dividing each
+        // chunk's weight by this normalizes throughput so `wpm` means real
+        // words/minute instead of a nominal pre-pause rate.
+        this.avgWeight = 1;
         this.onChunk = onChunk || (() => {});
         this.onProgress = onProgress || (() => {});
         this.onEnd = onEnd || (() => {});
@@ -65,6 +74,9 @@ export class RSVPEngine {
         this.pause();
         this.tokens = tokenize(text);
         this.pointer = 0;
+        this.avgWeight = this.tokens.length
+            ? chunkWeight(this.tokens) / this.tokens.length
+            : 1;
         this._render();
     }
 
@@ -96,18 +108,43 @@ export class RSVPEngine {
         else this.play();
     }
 
+    // Sentence, not word/chunk, is the logical unit for manual navigation —
+    // it's what a reader actually wants to jump back/forward to.
+    _sentenceStart(fromIndex) {
+        let i = fromIndex;
+        while (i > 0 && !this.tokens[i - 1].sentenceEnd) {
+            i--;
+        }
+        return i;
+    }
+
+    _sentenceEndIndex(fromIndex) {
+        let i = fromIndex;
+        while (i < this.tokens.length - 1 && !this.tokens[i].sentenceEnd) {
+            i++;
+        }
+        return i;
+    }
+
     rewind() {
         this.pause();
-        this.pointer = Math.max(0, this.pointer - this.chunkSize);
+        const currentStart = this._sentenceStart(this.pointer);
+        if (currentStart < this.pointer) {
+            // Mid-sentence: jump to the start of this sentence first.
+            this.pointer = currentStart;
+        } else if (currentStart > 0) {
+            // Already at a sentence start: jump to the previous sentence's start.
+            this.pointer = this._sentenceStart(currentStart - 1);
+        } else {
+            this.pointer = 0;
+        }
         this._render();
     }
 
     forward() {
         this.pause();
-        this.pointer = Math.min(
-            Math.max(0, this.tokens.length - 1),
-            this.pointer + this.chunkSize
-        );
+        const endIdx = this._sentenceEndIndex(this.pointer);
+        this.pointer = Math.min(Math.max(0, this.tokens.length - 1), endIdx + 1);
         this._render();
     }
 
@@ -119,7 +156,19 @@ export class RSVPEngine {
     }
 
     _currentChunk() {
-        return this.tokens.slice(this.pointer, this.pointer + this.chunkSize);
+        const chunk = [];
+        for (
+            let i = this.pointer;
+            i < this.tokens.length && chunk.length < this.chunkSize;
+            i++
+        ) {
+            const token = this.tokens[i];
+            chunk.push(token);
+            // Never flash past a paragraph or sentence boundary together with
+            // the next one — the eye needs that beat to land as a real pause.
+            if (token.paragraphEnd || token.sentenceEnd) break;
+        }
+        return chunk;
     }
 
     _render() {
@@ -140,7 +189,7 @@ export class RSVPEngine {
         this.onProgress(this.pointer / this.tokens.length);
 
         const baseMsPerWord = 60000 / this.wpm;
-        const delay = baseMsPerWord * chunkWeight(chunk);
+        const delay = baseMsPerWord * (chunkWeight(chunk) / this.avgWeight);
 
         this.timer = setTimeout(() => {
             this.pointer += chunk.length;

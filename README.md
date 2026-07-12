@@ -7,11 +7,17 @@ Backend em Python/FastAPI, frontend em JS puro (sem build step), SQLite como
 banco. Veja o [ROADMAP.md](ROADMAP.md) para a arquitetura completa, as fases
 planejadas e as decisões de design registradas ao longo do caminho.
 
-## Status: Fase 1 + 1.5
+## Status: Fase 1 + 1.5 + 1.6 (P0)
 
 RSVP engine (modo Focus), player, import por paste de texto, e CRUD básico da
 biblioteca (renomear/excluir documentos). Sem upload de arquivo, URL ou TTS
 ainda (fases seguintes — ver ROADMAP.md).
+
+**Nota sobre WPM (mudou na Fase 1.6):** o número no slider agora é o
+throughput *efetivo* — palavras/min reais, já descontando o tempo das
+micro-pausas. Antes era nominal (a taxa-base entre pausas, ~15–25% acima do
+throughput real). Se você tinha calibrado sua velocidade confortável antes
+dessa mudança, recalibre — o mesmo número agora lê mais devagar de verdade.
 
 ## Rodando localmente (sem Docker)
 

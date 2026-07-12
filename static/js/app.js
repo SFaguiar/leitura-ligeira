@@ -17,6 +17,7 @@ const readerTitle = document.getElementById("reader-title");
 const rsvpDisplay = document.getElementById("rsvp-display");
 const progressFill = document.getElementById("progress-fill");
 
+const rsvpStage = document.getElementById("rsvp-stage");
 const playPauseBtn = document.getElementById("play-pause-btn");
 const rewindBtn = document.getElementById("rewind-btn");
 const forwardBtn = document.getElementById("forward-btn");
@@ -42,47 +43,115 @@ themeToggle.addEventListener("click", () => {
     applyTheme(current === "dark" ? "light" : "dark");
 });
 
+// ---- Persisted reader settings (WPM / chunk size / font) ----
+const SETTINGS_KEYS = { wpm: "settings.wpm", chunk: "settings.chunkSize", font: "settings.fontSize" };
+
+function loadPersistedSettings() {
+    const wpm = localStorage.getItem(SETTINGS_KEYS.wpm);
+    const chunk = localStorage.getItem(SETTINGS_KEYS.chunk);
+    const font = localStorage.getItem(SETTINGS_KEYS.font);
+    if (wpm) {
+        wpmSlider.value = wpm;
+        wpmValue.textContent = wpm;
+    }
+    if (chunk) {
+        chunkSlider.value = chunk;
+        chunkValue.textContent = chunk;
+    }
+    if (font) {
+        fontSlider.value = font;
+        fontValue.textContent = font;
+        rsvpDisplay.style.fontSize = `${font}px`;
+    }
+}
+loadPersistedSettings();
+
+// ---- Wake Lock (keep the screen on while reading hands-free) ----
+let wakeLock = null;
+
+async function acquireWakeLock() {
+    if (!("wakeLock" in navigator)) return;
+    try {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => {
+            wakeLock = null;
+        });
+    } catch (err) {
+        wakeLock = null;
+    }
+}
+
+function releaseWakeLock() {
+    if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && engine.playing && !wakeLock) {
+        acquireWakeLock();
+    }
+});
+
 // ---- RSVP engine wiring ----
 const engine = new RSVPEngine({
     onChunk: (tokens) => {
-        rsvpDisplay.textContent = tokens.map((t) => t.text).join(" ") || "Fim";
+        rsvpDisplay.textContent = tokens.map((t) => t.text).join(" ");
     },
     onProgress: (fraction) => {
         progressFill.style.width = `${Math.min(100, fraction * 100)}%`;
     },
     onEnd: () => {
-        playPauseBtn.textContent = "▶";
+        refreshPlayButton();
+        rsvpDisplay.textContent = "Fim";
+        progressFill.style.width = "100%";
     },
 });
 
 function refreshPlayButton() {
     playPauseBtn.textContent = engine.playing ? "⏸" : "▶";
+    if (engine.playing) {
+        acquireWakeLock();
+    } else {
+        releaseWakeLock();
+    }
 }
 
 playPauseBtn.addEventListener("click", () => {
     engine.toggle();
     refreshPlayButton();
+    playPauseBtn.blur();
 });
 rewindBtn.addEventListener("click", () => {
     engine.rewind();
     refreshPlayButton();
+    rewindBtn.blur();
 });
 forwardBtn.addEventListener("click", () => {
     engine.forward();
+    refreshPlayButton();
+    forwardBtn.blur();
+});
+rsvpStage.addEventListener("click", () => {
+    engine.toggle();
     refreshPlayButton();
 });
 
 wpmSlider.addEventListener("input", () => {
     engine.setWpm(Number(wpmSlider.value));
     wpmValue.textContent = wpmSlider.value;
+    localStorage.setItem(SETTINGS_KEYS.wpm, wpmSlider.value);
 });
 chunkSlider.addEventListener("input", () => {
     engine.setChunkSize(Number(chunkSlider.value));
     chunkValue.textContent = chunkSlider.value;
+    localStorage.setItem(SETTINGS_KEYS.chunk, chunkSlider.value);
 });
 fontSlider.addEventListener("input", () => {
     rsvpDisplay.style.fontSize = `${fontSlider.value}px`;
     fontValue.textContent = fontSlider.value;
+    localStorage.setItem(SETTINGS_KEYS.font, fontSlider.value);
 });
 
 document.addEventListener("keydown", (e) => {
@@ -92,30 +161,37 @@ document.addEventListener("keydown", (e) => {
         engine.toggle();
         refreshPlayButton();
     } else if (e.code === "ArrowLeft") {
+        e.preventDefault();
         engine.rewind();
         refreshPlayButton();
     } else if (e.code === "ArrowRight") {
+        e.preventDefault();
         engine.forward();
         refreshPlayButton();
     } else if (e.code === "ArrowUp") {
+        e.preventDefault();
         wpmSlider.value = Math.min(1000, Number(wpmSlider.value) + 10);
         wpmSlider.dispatchEvent(new Event("input"));
     } else if (e.code === "ArrowDown") {
+        e.preventDefault();
         wpmSlider.value = Math.max(100, Number(wpmSlider.value) - 10);
         wpmSlider.dispatchEvent(new Event("input"));
     }
 });
 
 // ---- Navigation ----
-function showLibrary() {
+// Real history entries (pushState) so the Android back gesture/button moves
+// reader → library instead of leaving the site, and reloading inside the
+// reader (or following a #/read/{id} link) opens straight to that document.
+function showLibrary(push = true) {
     engine.pause();
     readerView.hidden = true;
     libraryView.hidden = false;
     loadLibrary();
-    history.replaceState(null, "", "#/");
+    if (push) history.pushState({ view: "library" }, "", "#/");
 }
 
-async function showReader(id) {
+async function showReader(id, push = true) {
     const res = await fetch(`/documents/${id}`);
     if (!res.ok) {
         alert("Não foi possível carregar o documento.");
@@ -129,10 +205,30 @@ async function showReader(id) {
     refreshPlayButton();
     libraryView.hidden = true;
     readerView.hidden = false;
-    history.replaceState(null, "", `#/read/${id}`);
+    if (push) history.pushState({ view: "reader", id }, "", `#/read/${id}`);
 }
 
-backBtn.addEventListener("click", showLibrary);
+window.addEventListener("popstate", (e) => {
+    const state = e.state;
+    if (state && state.view === "reader") {
+        showReader(state.id, false);
+    } else {
+        showLibrary(false);
+    }
+});
+
+function initFromLocation() {
+    const match = location.hash.match(/^#\/read\/(\d+)$/);
+    if (match) {
+        history.replaceState({ view: "reader", id: Number(match[1]) }, "", location.hash);
+        showReader(Number(match[1]), false);
+    } else {
+        history.replaceState({ view: "library" }, "", "#/");
+        showLibrary(false);
+    }
+}
+
+backBtn.addEventListener("click", () => history.back());
 
 // ---- Library ----
 async function loadLibrary() {
@@ -233,4 +329,4 @@ saveDocBtn.addEventListener("click", async () => {
 });
 
 // ---- Init ----
-loadLibrary();
+initFromLocation();

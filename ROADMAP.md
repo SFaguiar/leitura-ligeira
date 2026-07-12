@@ -68,24 +68,29 @@ Levantadas na revisão profunda das Fases 1 e 1.5 (2026-07-11). Registradas
 aqui para não se perderem; as marcadas "a implementar" viram trabalho na
 Fase 1.6.
 
-- **WPM é efetivo, não nominal** *(decidido — a implementar na Fase 1.6)*. Hoje
-  o delay é `(60000/wpm) × peso`, e como o peso médio das micro-pausas é >1, o
-  throughput real fica ~15–25% abaixo do número no slider. Decisão: normalizar
-  para que o número signifique palavras/min reais. Método concreto: calcular o
-  peso médio do documento no `load()` e usar
-  `delay_i = (60000/wpm) × (peso_i / peso_médio)` — assim a soma dos delays =
-  `N × 60000/wpm` exatamente, preservando o *ritmo relativo* das pausas mas
-  fixando o throughput em WPM (vale para qualquer chunk size). **Atenção:** isso
-  recalibra a percepção — o "300 confortável" atual vira outro número; anotar no
-  README quando implementar.
-- **rewind/forward pausam a reprodução** *(decidido — manter)*. Nudge de posição
-  sempre para o fluxo; retomar é explícito via play. Comportamento atual, agora
-  deliberado.
-- **Chunk não deve cruzar parágrafo nem frase** *(proposto — a implementar na
-  Fase 1.6)*. Hoje o `_currentChunk` fatia o array plano sem olhar limites, então
-  no modo multi-palavra um flash pode misturar fim de um parágrafo/frase com o
-  início do próximo. Usar os flags `paragraphEnd` (já existem) + detecção de fim
-  de frase para truncar o chunk no limite.
+- **WPM é efetivo, não nominal** *(implementado em 2026-07-12)*. O delay por
+  chunk agora é `(60000/wpm) × (peso_do_chunk / peso_médio_do_documento)`, com
+  `peso_médio` calculado uma vez em `load()`. A soma dos delays do documento
+  inteiro = `N × 60000/wpm` exatamente — o WPM do slider passou a ser
+  throughput real, não mais uma taxa nominal ~15–25% otimista. **Nota
+  registrada no README:** isso recalibra a percepção — quem já tinha calibrado
+  uma velocidade confortável antes precisa recalibrar.
+- **rewind/forward pausam a reprodução e navegam por frase, não por
+  palavra/chunk** *(revisado em 2026-07-12)*. A unidade lógica de navegação
+  manual é a frase — mais importante cognitivamente do que precisão de
+  palavra. `forward()` pula para o início da próxima frase.  `rewind()`
+  segue a semântica clássica de "voltar" de player de música: se o ponteiro
+  está no meio de uma frase, volta para o início dela; se já está exatamente
+  no início, volta para o início da frase *anterior*. Sempre pausa a
+  reprodução (retomar é explícito via play). Implementado com
+  `_sentenceStart`/`_sentenceEndIndex` em `rsvp.js`, reaproveitando o flag
+  `sentenceEnd` já existente no tokenizer.
+- **Chunk não cruza parágrafo nem frase** *(implementado em 2026-07-12)*.
+  `_currentChunk` agora monta o chunk token a token e para assim que inclui um
+  token com `paragraphEnd` ou `sentenceEnd` — mesmo que isso resulte num chunk
+  menor que o "palavras por vez" configurado. Efeito colateral esperado e
+  aceito: perto de fins de frase/parágrafo, o chunk visual pode variar de
+  tamanho (1–N palavras) em vez de ser sempre fixo.
 - **Pesos das micro-pausas são constantes hardcoded** (vírgula +0.35; fim de
   frase +0.9; palavra longa/número +0.5; parágrafo +1.2). Não configuráveis por
   UI na v1 — eventual "intensidade de pausa" fica para um settings futuro.
@@ -98,30 +103,33 @@ Fase 1.6.
   desenvolvimento (evita servir build velho). Revisar na Fase 9, quando o PWA
   precisar de cache real de assets.
 
-## Fase 1.6 — Hardening da fundação (PLANEJADA, não iniciada)
+## Fase 1.6 — Hardening da fundação (P0 implementado, 2026-07-12)
 
 Fruto da revisão profunda das Fases 1 e 1.5. Objetivo: fechar as lacunas de
 base **antes** da Fase 2, porque é a parte onde o usuário passa mais tempo e o
-custo de mudar depois é maior. Escopo aprovado: aguardando OK (decisão do
-usuário em 2026-07-11 foi "só documentar" — não implementar ainda).
+custo de mudar depois é maior. P0 implementado e aguardando teste manual do
+usuário (checklist enviado); P1/P2 seguem planejados, não iniciados.
 
-### P0 — fundação (correção clara, alto impacto no feel)
-- [ ] Persistir WPM/chunk/fonte no localStorage e reaplicar no load (hoje só o
+### [x] P0 — fundação (correção clara, alto impacto no feel)
+- [x] Persistir WPM/chunk/fonte no localStorage e reaplicar no load (hoje só o
       tema persiste; tudo volta a 300/1/48px toda sessão)
-- [ ] Wake Lock durante a reprodução (a tela do celular apaga no meio da
+- [x] Wake Lock durante a reprodução (a tela do celular apaga no meio da
       leitura hands-free — quebra o caso de uso central; API confirmada
       disponível)
-- [ ] Tap-to-play/pause na área da palavra (gesto primário no celular; spec §4
+- [x] Tap-to-play/pause na área da palavra (gesto primário no celular; spec §4
       previa "tap na tela")
-- [ ] Histórico real de navegação: `pushState` + `popstate` + ler hash no load,
+- [x] Histórico real de navegação: `pushState` + `popstate` + ler hash no load,
       para o botão/gesto "voltar" do Android ir do leitor → biblioteca em vez de
       sair do site; e recarregar dentro do leitor não cair na biblioteca
-- [ ] Chunk não cruza parágrafo/frase (ver decisão acima)
-- [ ] Estado de fim claro: mostrar "Fim" e completar a barra em 100% (hoje a
+- [x] Chunk não cruza parágrafo/frase (ver decisão acima)
+- [x] Estado de fim claro: mostrar "Fim" e completar a barra em 100% (hoje a
       última palavra congela e a barra para pouco antes do fim)
-- [ ] `preventDefault` nas setas (senão a página rola junto) + corrigir possível
+- [x] `preventDefault` nas setas (senão a página rola junto) + corrigir possível
       duplo-toggle do Espaço quando um botão está focado (blur no botão após
       clique)
+- [x] **(bônus, fora do P0 mas decidido junto)** WPM normalizado para efetivo —
+      ver "Decisões registradas" acima; `RSVPEngine` agora calcula o peso médio
+      do documento em `load()` e normaliza o delay por chunk
 
 ### P1 — robustez
 - [ ] `PRAGMA journal_mode=WAL` + `busy_timeout` no SQLite (evita "database is
