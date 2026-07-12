@@ -15,6 +15,7 @@ class DocumentSummary(BaseModel):
     title: str
     format: str
     source_type: str
+    word_count: int
     created_at: str
 
 

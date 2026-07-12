@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
@@ -7,9 +8,19 @@ from app.schemas import DocumentCreate, DocumentDetail, DocumentRename, Document
 
 router = APIRouter()
 
+# A pasted/uploaded blob beyond this is almost certainly a mistake (or, once
+# Fase 2 lands, a scanned-PDF-sized outlier) — reject with a clear message
+# instead of silently loading a multi-megabyte string into the browser.
+MAX_TEXT_CHARS = 500_000
+MAX_TITLE_CHARS = 200
+
 
 def _hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _unique_title(conn, base_title: str, exclude_id: int | None = None) -> str:
@@ -33,7 +44,14 @@ def create_document(payload: DocumentCreate):
     text = payload.raw_text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="raw_text must not be empty")
+    if len(text) > MAX_TEXT_CHARS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Texto muito grande ({len(text):,} caracteres, máx. {MAX_TEXT_CHARS:,}).",
+        )
+    title = title[:MAX_TITLE_CHARS]
     content_hash = _hash_text(text)
+    word_count = len(text.split())
 
     conn = get_connection()
     try:
@@ -46,8 +64,9 @@ def create_document(payload: DocumentCreate):
 
         title = _unique_title(conn, title)
         cur = conn.execute(
-            "INSERT INTO documents (title, format, source_type, raw_text, content_hash) VALUES (?, ?, ?, ?, ?)",
-            (title, "txt", "paste", text, content_hash),
+            "INSERT INTO documents (title, format, source_type, raw_text, content_hash, word_count, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (title, "txt", "paste", text, content_hash, word_count, _iso_now()),
         )
         conn.commit()
         row = conn.execute(
@@ -63,7 +82,8 @@ def list_documents():
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT id, title, format, source_type, created_at FROM documents ORDER BY created_at DESC"
+            "SELECT id, title, format, source_type, word_count, created_at "
+            "FROM documents ORDER BY created_at DESC"
         ).fetchall()
     finally:
         conn.close()
@@ -86,7 +106,7 @@ def get_document(document_id: int):
 
 @router.patch("/documents/{document_id}", response_model=DocumentDetail)
 def rename_document(document_id: int, payload: DocumentRename):
-    title = payload.title.strip()
+    title = payload.title.strip()[:MAX_TITLE_CHARS]
     if not title:
         raise HTTPException(status_code=400, detail="title must not be empty")
 

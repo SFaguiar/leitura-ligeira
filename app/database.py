@@ -11,15 +11,29 @@ CREATE TABLE IF NOT EXISTS documents (
     source_type TEXT NOT NULL,
     raw_text TEXT NOT NULL,
     content_hash TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    word_count INTEGER NOT NULL DEFAULT 0,
+    lang TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 """
+
+# Columns added after the initial release — each gets a migration entry so
+# existing databases pick them up without a manual reset.
+MIGRATIONS = [
+    ("content_hash", "ALTER TABLE documents ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"),
+    ("word_count", "ALTER TABLE documents ADD COLUMN word_count INTEGER NOT NULL DEFAULT 0"),
+    ("lang", "ALTER TABLE documents ADD COLUMN lang TEXT"),
+]
 
 
 def get_connection() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # busy_timeout and foreign_keys are per-connection pragmas — must be set
+    # every time, unlike journal_mode which is persisted in the db file.
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -27,10 +41,25 @@ def init_db() -> None:
     conn = get_connection()
     try:
         conn.executescript(SCHEMA)
+        conn.execute("PRAGMA journal_mode = WAL")
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(documents)")}
-        if "content_hash" not in columns:
+        for column_name, migration_sql in MIGRATIONS:
+            if column_name not in columns:
+                conn.execute(migration_sql)
+        # Backfill old space-separated timestamps ("YYYY-MM-DD HH:MM:SS") to
+        # ISO 8601 with a Z suffix, so `new Date(...)` parses reliably on
+        # every browser (space-separated is non-standard and Safari-hostile).
+        conn.execute(
+            "UPDATE documents SET created_at = replace(created_at, ' ', 'T') || 'Z' "
+            "WHERE created_at NOT LIKE '%T%'"
+        )
+        # Backfill word_count for documents created before that column
+        # existed. Safe to key off `= 0`: a real document can never have
+        # zero words (raw_text is required non-empty at insert time).
+        for row in conn.execute("SELECT id, raw_text FROM documents WHERE word_count = 0"):
             conn.execute(
-                "ALTER TABLE documents ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"
+                "UPDATE documents SET word_count = ? WHERE id = ?",
+                (len(row["raw_text"].split()), row["id"]),
             )
         conn.commit()
     finally:

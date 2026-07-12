@@ -103,12 +103,13 @@ Fase 1.6.
   desenvolvimento (evita servir build velho). Revisar na Fase 9, quando o PWA
   precisar de cache real de assets.
 
-## Fase 1.6 — Hardening da fundação (P0 implementado, 2026-07-12)
+## Fase 1.6 — Hardening da fundação (P0 + P1 implementados, 2026-07-12)
 
 Fruto da revisão profunda das Fases 1 e 1.5. Objetivo: fechar as lacunas de
 base **antes** da Fase 2, porque é a parte onde o usuário passa mais tempo e o
-custo de mudar depois é maior. P0 implementado e aguardando teste manual do
-usuário (checklist enviado); P1/P2 seguem planejados, não iniciados.
+custo de mudar depois é maior. P0 e P1 implementados e testados ao vivo no
+navegador; P2 é só documentação de limitações conhecidas, não implementação
+(ver abaixo) — não há mais trabalho de código pendente nesta fase.
 
 ### [x] P0 — fundação (correção clara, alto impacto no feel)
 - [x] Persistir WPM/chunk/fonte no localStorage e reaplicar no load (hoje só o
@@ -131,23 +132,34 @@ usuário (checklist enviado); P1/P2 seguem planejados, não iniciados.
       ver "Decisões registradas" acima; `RSVPEngine` agora calcula o peso médio
       do documento em `load()` e normaliza o delay por chunk
 
-### P1 — robustez
-- [ ] `PRAGMA journal_mode=WAL` + `busy_timeout` no SQLite (evita "database is
-      locked" com vários celulares lendo/gravando — casa com o uso
-      multi-dispositivo das Fases 3 e 5)
-- [ ] Data em ISO com `T` vinda do backend (o `created_at + "Z"` atual funciona
-      no Chrome/Android mas pode dar "Invalid Date" no Safari/iOS)
-- [ ] Guardar `word_count` na inserção; mostrar palavras + tempo estimado por
-      item na biblioteca (é onde o usuário decide o que ler; também alimenta a
-      Fase 7 de graça)
-- [ ] Palavra muito longa: shrink-to-fit (reduzir a fonte quando não couber em
-      uma linha) para preservar a ilusão de posição fixa do RSVP
-- [ ] Limite de tamanho em `raw_text`/`title` + erro amigável (um paste/PDF
-      gigante vira um blob único carregado inteiro no navegador)
-- [ ] Modal: fechar com Esc e clique no fundo; Enter salva
-- [ ] Schema já pronto para o futuro: coluna `lang` (pré-stage do TTS da Fase 3)
-      e FK `document_id` com `ON DELETE CASCADE` nas tabelas de áudio/progresso
-      (evita órfãos quando a exclusão da Fase 1.5 encontrar esses dados)
+### [x] P1 — robustez (implementado, 2026-07-12)
+- [x] `PRAGMA journal_mode=WAL` (ativado uma vez em `init_db`, persiste no
+      arquivo do banco) + `busy_timeout=5000` (por conexão, em `get_connection`)
+- [x] Data em ISO com `T`/`Z` gerada explicitamente em Python (`_iso_now()`),
+      não mais via `DEFAULT` do SQL — `CREATE TABLE IF NOT EXISTS` não altera o
+      default de uma coluna já existente, então depender só do schema não
+      bastava para bancos já criados. Timestamps antigos (espaço em vez de
+      `T`) migrados automaticamente em `init_db`.
+- [x] Coluna `word_count`; biblioteca mostra "N palavras · ~M min" (estimativa
+      usa o WPM persistido do próprio usuário). Documentos antigos tiveram o
+      `word_count` recalculado a partir do `raw_text` na migração.
+- [x] Shrink-to-fit em `fitDisplayText()` (app.js) — reduz a fonte até caber
+      numa linha só, com piso de ~35% do tamanho base. **Bug encontrado e
+      corrigido durante o teste:** `showReader()` chamava `engine.load()`
+      antes de tornar a view do leitor visível, então a primeira palavra de
+      cada documento era medida com `rsvp-stage` em largura zero (elemento
+      oculto) e encolhia pro mínimo por engano, mesmo sendo uma palavra curta.
+      Corrigido invertendo a ordem: view visível primeiro, load depois.
+- [x] Limite de 500.000 caracteres em `raw_text` (413 com mensagem amigável) e
+      200 caracteres em `title` (truncado silenciosamente, sem erro)
+- [x] Modal: Esc fecha, clique no backdrop fecha (clique dentro do card não
+      fecha), Enter no campo de título salva (Enter no textarea continua
+      inserindo quebra de linha, não submete)
+- [x] Coluna `lang` adicionada (nullable, populada só na Fase 3) e
+      `PRAGMA foreign_keys=ON` habilitado por conexão — as tabelas de
+      áudio/progresso ainda não existem (Fases 3/5), então o `ON DELETE
+      CASCADE` em si fica para quando forem criadas; o que dava pra fazer
+      agora (garantir que FKs futuras realmente cascateiem) já está pronto.
 
 ### P2 — documentar como limitação / adiar
 - [ ] Abreviações ("Dr.", "Sra.", "etc.", "p.ex.") geram falsa pausa de fim de

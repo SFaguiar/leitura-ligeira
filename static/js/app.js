@@ -94,10 +94,27 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
+// ---- Shrink-to-fit (long words/URLs must not wrap — that moves the eye,
+// which is exactly what RSVP's fixed position is supposed to prevent) ----
+function fitDisplayText() {
+    const baseSize = Number(fontSlider.value) || 48;
+    const minSize = Math.max(18, Math.floor(baseSize * 0.35));
+    rsvpDisplay.style.whiteSpace = "nowrap";
+    let size = baseSize;
+    rsvpDisplay.style.fontSize = `${size}px`;
+    const available = rsvpStage.clientWidth - 32;
+    while (rsvpDisplay.scrollWidth > available && size > minSize) {
+        size -= 2;
+        rsvpDisplay.style.fontSize = `${size}px`;
+    }
+    rsvpDisplay.style.whiteSpace = "";
+}
+
 // ---- RSVP engine wiring ----
 const engine = new RSVPEngine({
     onChunk: (tokens) => {
         rsvpDisplay.textContent = tokens.map((t) => t.text).join(" ");
+        fitDisplayText();
     },
     onProgress: (fraction) => {
         progressFill.style.width = `${Math.min(100, fraction * 100)}%`;
@@ -149,9 +166,9 @@ chunkSlider.addEventListener("input", () => {
     localStorage.setItem(SETTINGS_KEYS.chunk, chunkSlider.value);
 });
 fontSlider.addEventListener("input", () => {
-    rsvpDisplay.style.fontSize = `${fontSlider.value}px`;
     fontValue.textContent = fontSlider.value;
     localStorage.setItem(SETTINGS_KEYS.font, fontSlider.value);
+    fitDisplayText();
 });
 
 document.addEventListener("keydown", (e) => {
@@ -199,12 +216,17 @@ async function showReader(id, push = true) {
     }
     const doc = await res.json();
     readerTitle.textContent = doc.title;
+    // Reveal the reader view *before* loading — engine.load() renders the
+    // first chunk synchronously via onChunk, and fitDisplayText() needs
+    // rsvp-stage to already have real layout dimensions (a hidden element
+    // measures 0-width, which forced every opening word to shrink to the
+    // minimum font size).
+    libraryView.hidden = true;
+    readerView.hidden = false;
     engine.setWpm(Number(wpmSlider.value));
     engine.setChunkSize(Number(chunkSlider.value));
     engine.load(doc.raw_text);
     refreshPlayButton();
-    libraryView.hidden = true;
-    readerView.hidden = false;
     if (push) history.pushState({ view: "reader", id }, "", `#/read/${id}`);
 }
 
@@ -231,6 +253,20 @@ function initFromLocation() {
 backBtn.addEventListener("click", () => history.back());
 
 // ---- Library ----
+async function apiErrorMessage(res, fallback) {
+    try {
+        const body = await res.json();
+        return body.detail || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function estimatedMinutes(wordCount) {
+    const wpm = Number(wpmSlider.value) || 300;
+    return Math.max(1, Math.round(wordCount / wpm));
+}
+
 async function loadLibrary() {
     const res = await fetch("/documents");
     const docs = await res.json();
@@ -249,7 +285,9 @@ async function loadLibrary() {
             </div>
         `;
         li.querySelector(".doc-title").textContent = doc.title;
-        li.querySelector(".doc-meta").textContent = `${doc.format.toUpperCase()} · ${new Date(doc.created_at + "Z").toLocaleString()}`;
+        li.querySelector(".doc-meta").textContent =
+            `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
+            `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}`;
         li.querySelector(".doc-info").addEventListener("click", () => showReader(doc.id));
         li.querySelector(".rename-btn").addEventListener("click", (e) => {
             e.stopPropagation();
@@ -275,7 +313,7 @@ async function renameDocument(doc) {
         body: JSON.stringify({ title: trimmed }),
     });
     if (!res.ok) {
-        alert("Falha ao renomear o documento.");
+        alert(await apiErrorMessage(res, "Falha ao renomear o documento."));
         return;
     }
     loadLibrary();
@@ -287,7 +325,7 @@ async function deleteDocument(doc) {
     }
     const res = await fetch(`/documents/${doc.id}`, { method: "DELETE" });
     if (!res.ok) {
-        alert("Falha ao excluir o documento.");
+        alert(await apiErrorMessage(res, "Falha ao excluir o documento."));
         return;
     }
     loadLibrary();
@@ -306,6 +344,20 @@ function closeModal() {
 
 newDocBtn.addEventListener("click", openModal);
 cancelDocBtn.addEventListener("click", closeModal);
+newDocModal.addEventListener("click", (e) => {
+    if (e.target === newDocModal) closeModal();
+});
+docTitleInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        saveDocBtn.click();
+    }
+});
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !newDocModal.hidden) {
+        closeModal();
+    }
+});
 
 saveDocBtn.addEventListener("click", async () => {
     const text = docTextInput.value.trim();
@@ -320,7 +372,7 @@ saveDocBtn.addEventListener("click", async () => {
         body: JSON.stringify({ title, raw_text: text }),
     });
     if (!res.ok) {
-        alert("Falha ao salvar o documento.");
+        alert(await apiErrorMessage(res, "Falha ao salvar o documento."));
         return;
     }
     const doc = await res.json();
