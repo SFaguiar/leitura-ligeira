@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Data (personal reading library — never commit real content)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Env / secrets
+.env
+
+# OS
+.DS_Store
+Thumbs.db

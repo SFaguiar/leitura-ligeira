@@ -1,0 +1,274 @@
+:root {
+    --bg: #f5f5f2;
+    --fg: #1a1a1a;
+    --muted: #6b6b6b;
+    --accent: #2f6fed;
+    --card-bg: #ffffff;
+    --border: #dddddd;
+}
+
+html[data-theme="dark"] {
+    --bg: #14161a;
+    --fg: #e8e8e8;
+    --muted: #9a9a9a;
+    --accent: #5b9bff;
+    --card-bg: #1f2227;
+    --border: #33363c;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.brand {
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.icon-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1.1rem;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    color: var(--fg);
+}
+
+.icon-btn:active {
+    transform: scale(0.96);
+}
+
+.view {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 1rem 1.25rem 3rem;
+}
+
+.library-actions {
+    margin: 1rem 0;
+}
+
+.btn {
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--fg);
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.document-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.document-list li {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.6rem 0.7rem 0.6rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.doc-info {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.doc-info:active {
+    opacity: 0.8;
+}
+
+.doc-actions {
+    display: flex;
+    gap: 0.3rem;
+    flex-shrink: 0;
+}
+
+.doc-actions .icon-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.95rem;
+}
+
+.doc-title {
+    font-weight: 600;
+}
+
+.doc-meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-top: 0.2rem;
+}
+
+.empty-hint {
+    color: var(--muted);
+    text-align: center;
+    margin-top: 2rem;
+}
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    z-index: 10;
+}
+
+.modal[hidden] {
+    display: none;
+}
+
+.modal-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1.25rem;
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.modal-card label {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-top: 0.5rem;
+}
+
+.modal-card input,
+.modal-card textarea {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.reader-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+}
+
+.reader-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rsvp-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30vh;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card-bg);
+}
+
+.rsvp-display {
+    font-size: 48px;
+    font-weight: 600;
+    text-align: center;
+    padding: 1rem;
+    word-break: break-word;
+}
+
+.progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 1rem 0;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.1s linear;
+}
+
+.controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.transport {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.play-btn {
+    font-size: 1.4rem;
+    width: 3.2rem;
+    height: 3.2rem;
+    border-radius: 50%;
+}
+
+.sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.slider-row input[type="range"] {
+    width: 100%;
+}

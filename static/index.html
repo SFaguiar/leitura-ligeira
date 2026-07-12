@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Leitura Ligeira</title>
+<link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+<header class="topbar">
+    <h1 class="brand">Leitura Ligeira</h1>
+    <button id="theme-toggle" class="icon-btn" title="Alternar tema">🌙</button>
+</header>
+
+<main id="library-view" class="view">
+    <div class="library-actions">
+        <button id="new-doc-btn" class="btn btn-primary">+ Novo texto</button>
+    </div>
+    <ul id="document-list" class="document-list"></ul>
+    <p id="library-empty" class="empty-hint" hidden>Nenhum texto ainda. Cole um texto para começar.</p>
+</main>
+
+<div id="new-doc-modal" class="modal" hidden>
+    <div class="modal-card">
+        <h2>Colar texto</h2>
+        <label for="doc-title">Título</label>
+        <input id="doc-title" type="text" placeholder="Ex: Artigo sobre X" />
+        <label for="doc-text">Texto</label>
+        <textarea id="doc-text" rows="10" placeholder="Cole o texto aqui..."></textarea>
+        <div class="modal-actions">
+            <button id="cancel-doc-btn" class="btn">Cancelar</button>
+            <button id="save-doc-btn" class="btn btn-primary">Salvar e ler</button>
+        </div>
+    </div>
+</div>
+
+<main id="reader-view" class="view" hidden>
+    <div class="reader-topbar">
+        <button id="back-btn" class="icon-btn" title="Voltar à biblioteca">←</button>
+        <span id="reader-title" class="reader-title"></span>
+    </div>
+
+    <div class="rsvp-stage">
+        <div id="rsvp-display" class="rsvp-display">Pronto</div>
+    </div>
+
+    <div class="progress-bar">
+        <div id="progress-fill" class="progress-fill"></div>
+    </div>
+
+    <div class="controls">
+        <div class="transport">
+            <button id="rewind-btn" class="icon-btn" title="Voltar um bloco">⏮</button>
+            <button id="play-pause-btn" class="icon-btn play-btn" title="Play/Pause">▶</button>
+            <button id="forward-btn" class="icon-btn" title="Avançar um bloco">⏭</button>
+        </div>
+
+        <div class="sliders">
+            <div class="slider-row">
+                <label for="wpm-slider">WPM: <span id="wpm-value">300</span></label>
+                <input id="wpm-slider" type="range" min="100" max="1000" step="10" value="300" />
+            </div>
+            <div class="slider-row">
+                <label for="chunk-slider">Palavras por vez: <span id="chunk-value">1</span></label>
+                <input id="chunk-slider" type="range" min="1" max="4" step="1" value="1" />
+            </div>
+            <div class="slider-row">
+                <label for="font-slider">Tamanho da fonte: <span id="font-value">48</span>px</label>
+                <input id="font-slider" type="range" min="24" max="96" step="2" value="48" />
+            </div>
+        </div>
+    </div>
+</main>
+
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

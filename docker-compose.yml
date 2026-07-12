@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+# Phase 3 will add a `tts` service here (Kokoro-FastAPI) joined to the
+# existing local AI stack's Docker network, e.g.:
+#
+# networks:
+#   default:
+#     name: ai-stack_default
+#     external: true
