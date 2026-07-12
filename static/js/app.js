@@ -97,18 +97,35 @@ document.addEventListener("visibilitychange", () => {
 
 // ---- Shrink-to-fit (long words/URLs must not wrap — that moves the eye,
 // which is exactly what RSVP's fixed position is supposed to prevent) ----
-function fitDisplayText() {
+// An off-screen probe measures the chunk's *intrinsic* text width. Measuring
+// rsvpDisplay directly breaks under ORP: the ORP layout stretches the element
+// to width:100% (to anchor the pivot), so its own scrollWidth always looks
+// "too wide" and every word would shrink to the minimum.
+const measureProbe = document.createElement("span");
+measureProbe.setAttribute("aria-hidden", "true");
+measureProbe.style.cssText =
+    "position:absolute; left:-9999px; top:-9999px; white-space:nowrap; visibility:hidden;";
+document.body.appendChild(measureProbe);
+
+let lastChunkText = "";
+
+function fitDisplayText(text = lastChunkText) {
+    lastChunkText = text;
     const baseSize = Number(fontSlider.value) || 48;
     const minSize = Math.max(18, Math.floor(baseSize * 0.35));
-    rsvpDisplay.style.whiteSpace = "nowrap";
-    let size = baseSize;
-    rsvpDisplay.style.fontSize = `${size}px`;
     const available = rsvpStage.clientWidth - 32;
-    while (rsvpDisplay.scrollWidth > available && size > minSize) {
+    const cs = getComputedStyle(rsvpDisplay);
+    measureProbe.style.fontFamily = cs.fontFamily;
+    measureProbe.style.fontWeight = cs.fontWeight;
+    measureProbe.style.letterSpacing = cs.letterSpacing;
+    measureProbe.textContent = text;
+    let size = baseSize;
+    measureProbe.style.fontSize = `${size}px`;
+    while (measureProbe.offsetWidth > available && size > minSize) {
         size -= 2;
-        rsvpDisplay.style.fontSize = `${size}px`;
+        measureProbe.style.fontSize = `${size}px`;
     }
-    rsvpDisplay.style.whiteSpace = "";
+    rsvpDisplay.style.fontSize = `${size}px`;
 }
 
 // ---- ORP (Optimal Recognition Point) ----
@@ -171,15 +188,18 @@ function renderChunk(tokens) {
 // ---- RSVP engine wiring ----
 const engine = new RSVPEngine({
     onChunk: (tokens) => {
+        const plain = tokens.map((t) => t.text).join(" ");
         renderChunk(tokens);
-        fitDisplayText();
+        fitDisplayText(plain);
     },
     onProgress: (fraction) => {
         progressFill.style.width = `${Math.min(100, fraction * 100)}%`;
     },
     onEnd: () => {
         refreshPlayButton();
+        rsvpDisplay.classList.remove("orp-single");
         rsvpDisplay.textContent = "Fim";
+        fitDisplayText("Fim");
         progressFill.style.width = "100%";
     },
 });
