@@ -20,6 +20,8 @@ class DocumentSummary(BaseModel):
     visibility: str
     owner_id: int | None
     created_at: str
+    progress_position: int | None = None
+    progress_status: str | None = None
 
 
 class DocumentDetail(DocumentSummary):
@@ -75,3 +77,32 @@ class UserSettingsUpdate(BaseModel):
     nav_pause_on_switch: bool | None = None
     theme: str | None = None
     collect_stats: bool | None = None
+
+
+class ProgressOut(BaseModel):
+    document_id: int
+    position: int
+    status: str
+    updated_at: str
+
+
+class ProgressUpdate(BaseModel):
+    position: int | None = None
+    status: str | None = None
+
+
+class SessionCreate(BaseModel):
+    document_id: int
+    mode: str
+    start_pointer: int = 0
+
+
+class SessionOut(BaseModel):
+    session_id: int | None
+
+
+class SessionUpdate(BaseModel):
+    end_pointer: int
+    position: int
+    ended_at: bool = False
+    avg_wpm: float | None = None

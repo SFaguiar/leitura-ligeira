@@ -307,6 +307,50 @@ GET        /documents/{id}/audio/{voice} # stream do áudio
 - **Settings-ao-servidor fica junto** na Fase 4 (não adiado) — foi o motivo
   de termos construído o módulo único na Fase 3.
 
+**2026-07-13 — deliberação profunda da Fase 5 (8ª rodada)**
+- **Upsert lazy no sub-recurso (A1):** `GET /documents/{id}/progress` faz
+  `INSERT OR IGNORE` ao ser chamado, criando linha com `position=0,
+  status='quero_ler'` e promovendo imediatamente para `'lendo'` — apenas de
+  `'quero_ler'`; status definidos pelo usuário (`'lido'`, `'abandonado'`)
+  não são sobrescritos pela reabertura do documento.
+- **`status='lido'` automático ao `onEnd()` (B1):** fim de documento é sinal
+  inequívoco no RSVP; reversão manual disponível a qualquer momento.
+- **Progresso na biblioteca (C1):** `GET /documents` enriquecido com LEFT JOIN
+  em `reading_progress`; barra de % e tag de status renderizadas no frontend
+  sem custo extra de query (o JOIN já era necessário para trazer o status).
+- **Seletor inline de status (D1):** `<select>` por item na biblioteca permite
+  mudança manual sem abrir o documento, incluindo marcar "quero ler" em docs
+  nunca abertos (caso de uso de wishlist do ROADMAP).
+- **`reading_sessions` inclui `updated_at`** atualizado a cada heartbeat e
+  fechamento — campo necessário para a verificação de timeout de 5min
+  (detectado na próxima abertura do mesmo doc, sem background task no servidor).
+- **Heartbeat unificado:** um único `PATCH /sessions/{id}` salva posição e
+  atualiza a sessão — sem dois requests paralelos; consistente com o padrão
+  best-effort já adotado em settings.
+- **`collect_stats` checado no momento de gravar** — opt-out não acumula
+  nenhuma linha em `reading_sessions`; `reading_progress` continua sempre
+  ativo (é funcionalidade, não telemetria).
+- **`ON DELETE CASCADE`** nas FKs de ambas as tabelas para `users` e
+  `documents` — sem dado órfão ao excluir usuário ou documento; consistente
+  com `generated_audio` já no ROADMAP.
+- Limitação aceita (nova): app morto abruptamente e reaberto em menos de 5min
+  pode deixar sessão órfã aberta convivendo com a nova — detectada e fechada
+  só após o timeout. Mesmo espírito das "palavras lidas podem inflar".
+- **Ambas as presunções confirmadas por Samuel (2026-07-13), com desenho mais
+  rico do que a pergunta binária original:**
+  (a) `'abandonado'`/`'lido'` não são promovidos para `'lendo'` pela
+  reabertura — **mas documentos abandonados ganham uma seção própria,
+  recolhida por padrão, na biblioteca** ("Abandonados (N)"), separada da
+  lista ativa para eliminar o risco de abrir um por engano. Clicar no
+  título/info de um item abandonado abre um modal com três escolhas
+  ("Continuar lendo" → `'lendo'`, "Quero ler" → `'quero_ler'`, "Manter
+  abandonado") — **qualquer escolha permite explorar o documento**, o modal
+  nunca bloqueia a entrada, só pede uma decisão consciente antes.
+  (b) `<select>` aparece mesmo para docs nunca abertos, **mas com um estado
+  neutro** ("— sem status —") em vez de pré-selecionar "Quero ler" — evita
+  fingir que uma escolha já foi feita quando não existe linha no banco ainda.
+  O valor neutro é só de exibição; nunca é gravado via `PUT`.
+
 ---
 
 ## Questões em aberto (fechar antes das fases que dependem delas)
@@ -477,25 +521,215 @@ autenticado confirmada redirecionando para a tela de login. Dados de teste
 retorna ao estado real do usuário. Nenhum código commitado ainda —
 aguardando teste e autorização do usuário.
 
-#### [ ] Fase 5 — Progresso, prateleiras e sessões por usuário
+#### [x] Fase 5 — Progresso, prateleiras e sessões por usuário *(implementada 2026-07-13, aguardando teste do usuário)*
 *Depende de: Fase 4 (user_id). Desbloqueia: Fase 7 (busca por prateleira),
-Fase 9 (dashboard), gamificação.*
-- `reading_progress` por usuário×documento — **cada pessoa continua de onde
-  ELA parou** (o pivô dissolveu a antiga limitação de posição única por
-  documento).
-- **Prateleiras clássicas** (`reading_progress.status`): quero ler / lendo /
-  lido / abandonado. Abrir o documento pela 1ª vez muda para "lendo"
-  automaticamente; o usuário troca manualmente a qualquer momento (inclusive
-  marcar "quero ler" antes de abrir, como favorito).
-- `reading_sessions` com `user_id` e `mode`; começa no primeiro play, fecha
-  em fim/saída/5 min de inatividade; heartbeat ~30s + envio explícito ao
-  pausar/sair/minimizar.
-- **Opt-in/out de coleta por usuário** (`collect_stats`): desliga apenas
-  `reading_sessions` (telemetria de desempenho); `reading_progress`
-  (posição + status) continua sempre salvo, é funcionalidade, não coleta.
-- "Documento terminado" não é campo de sessão — já é `status = 'lido'`.
-- Limitações mantidas: "palavras lidas" pode inflar (play sozinho, saltos de
-  navegação contam) — sem detecção de atenção.
+Fase 9 (dashboard), gamificação. Plano fechado na 8ª rodada de deliberação.*
+
+**Resumo executivo:** Adiciona persistência de posição e status de leitura por
+usuário×documento (`reading_progress`) e rastreamento de sessões opt-in
+(`reading_sessions`). O banco recebe duas tabelas novas via `CREATE TABLE IF
+NOT EXISTS` — sem migração de dado legado (contas existem antes deste dado,
+conforme princípio nº 1 do ROADMAP). A biblioteca exibe status e progresso
+percentual de cada item via LEFT JOIN na listagem. A posição é restaurada ao
+abrir um documento e salva em quatro gatilhos: pause, troca de modo, saída da
+reader-view e `visibilitychange→hidden`. Sessões só registradas se
+`collect_stats = 1`; `reading_progress` é sempre ativo (funcionalidade,
+não telemetria).
+
+**Schema — tabelas novas (bloco `SCHEMA` de `database.py`):**
+
+```
+reading_progress:
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL DEFAULT 0,
+  status      TEXT    NOT NULL DEFAULT 'quero_ler',
+  updated_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  PRIMARY KEY (user_id, document_id)
+  -- índice: reading_progress(user_id) — cobre LEFT JOIN na listagem
+
+reading_sessions:
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  document_id    INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  mode           TEXT    NOT NULL,
+  started_at     TEXT    NOT NULL,
+  ended_at       TEXT,
+  updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  start_pointer  INTEGER NOT NULL DEFAULT 0,
+  end_pointer    INTEGER,
+  words_advanced INTEGER,
+  avg_wpm        REAL
+  -- updated_at atualizado a cada heartbeat/fechamento — base do timeout de 5min
+  -- índice: reading_sessions(user_id, document_id) — cobre dashboard Fase 9
+```
+
+**Novos arquivos de backend:**
+- `app/routers/progress.py` — `GET` e `PUT /documents/{id}/progress`.
+- `app/routers/sessions.py` — `POST /sessions` e `PATCH /sessions/{id}`.
+
+**Modificações de backend:**
+- `database.py`: dois `CREATE TABLE IF NOT EXISTS` + dois `CREATE INDEX IF
+  NOT EXISTS` em `init_db()`. Nenhuma entrada nova em `MIGRATIONS`
+  (tabelas novas, não colunas em tabelas existentes).
+- `schemas.py`: `ProgressOut`, `ProgressUpdate`, `SessionCreate`,
+  `SessionHeartbeat`, `SessionClose`; `DocumentSummary` ganha
+  `progress_position: int | None` e `progress_status: str | None`.
+- `documents.py` (`GET /documents`): LEFT JOIN em `reading_progress` para o
+  `user_id` atual; traz `progress_position` e `progress_status` (nullable).
+- `main.py`: registrar `progress.router` e `sessions.router`.
+
+**Comportamento de `GET /documents/{id}/progress` (A1 — upsert lazy):**
+1. Verifica visibilidade via `_get_visible_document` → 404 idêntico ao
+   "não existe" se privado de outro (não confirma existência do privado).
+2. `INSERT OR IGNORE` — cria linha com defaults se não existir.
+3. `UPDATE SET status='lendo', updated_at=? WHERE status='quero_ler'` —
+   só promove de `'quero_ler'`; `'lido'` e `'abandonado'` não são
+   sobrescritos pela reabertura.
+4. Retorna a linha atual.
+
+**Comportamento de `PUT /documents/{id}/progress`:**
+Partial update de `position` e/ou `status`; enum validado no router
+(`'quero_ler'|'lendo'|'lido'|'abandonado'`, 422 para qualquer outro);
+`user_id` sempre do cookie de sessão — nunca do corpo ou da URL da request.
+Gatilhos no frontend: pause, troca de modo, saída da reader-view,
+`visibilitychange→hidden`, `onEnd()` (com `status='lido'`).
+
+**Comportamento de `POST /sessions` e `PATCH /sessions/{id}`:**
+- `collect_stats` checado **no momento de gravar** — retorno silencioso
+  `{ok: true, session_id: null}` se desligado; `reading_progress` segue ativo.
+- Sessão nasce no **primeiro play** (não na abertura do documento).
+- `PATCH` (heartbeat ~30s, durante play): atualiza `end_pointer`, `position`
+  no `reading_progress` (unificado), `updated_at`. Um único request.
+- `PATCH` (fechar): adiciona `ended_at`, `words_advanced = end_pointer -
+  start_pointer`, `avg_wpm` se fornecido.
+- Sessão fechada em: `onEnd()`, `showLibrary()`, troca de documento.
+- Timeout de 5min: ao abrir nova sessão, fecha sessão anterior se
+  `ended_at IS NULL AND updated_at < now() - 5min` — sem background task.
+- Sessão verificada como pertencente ao `user_id` do cookie antes de qualquer
+  escrita (404 se não for).
+
+**Biblioteca — C1 (tag + barra de progresso) + D1 (seletor inline), com
+desenho final de status confirmado em 2026-07-13:**
+- `GET /documents` traz `progress_position` e `progress_status` por LEFT JOIN.
+- Cada item exibe: barra de `% = round(position / word_count * 100)` (calculado
+  no frontend) e tag colorida de status (⭐ Quero ler / 🔖 Lendo / ✅ Lido /
+  🚫 Abandonado).
+- `<select>` inline com os 4 status reais + uma opção neutra "— sem status —"
+  **só de exibição** (nunca enviada via `PUT`) para docs nunca abertos
+  (`progress_status = null`). `e.stopPropagation()` no `change` impede abrir
+  o leitor ao trocar o status. Dispara `PUT /documents/{id}/progress`.
+- **Seção "Abandonados (N)" separada, recolhida por padrão** — documentos com
+  `status='abandonado'` saem da lista principal e vão para um bloco fechado
+  abaixo (precisa expandir pra ver). Elimina o risco de clique acidental num
+  documento já descartado.
+- **Modal de confirmação ao clicar num item abandonado:** clicar no
+  título/info (não no `<select>`) de um item dentro da seção recolhida abre
+  um modal com três botões — "Continuar lendo" (`PUT status='lendo'`),
+  "Quero ler" (`PUT status='quero_ler'`), "Manter abandonado" (nenhum PUT).
+  **Todas as três opções abrem o leitor em seguida** — o modal nunca bloqueia
+  a exploração, só evita que o clique promova o status silenciosamente.
+
+**Decisões fechadas:**
+- A1 (upsert lazy no sub-recurso) — mais contido que side-effect no GET do
+  documento principal; sem overhead de endpoint extra vs A3.
+- B1 (`status='lido'` automático ao `onEnd()`) — fim de documento é sinal
+  inequívoco no RSVP; reversão manual trivial.
+- C1 (tag + % na biblioteca) — JOIN já necessário; custo marginal zero.
+- D1 (seletor inline) — habilita caso "quero ler antes de abrir".
+- `ON DELETE CASCADE` em ambas as FKs de ambas as tabelas.
+- Heartbeat unificado (posição + sessão num único `PATCH`).
+- `user_id` sempre do cookie, nunca do body/URL.
+- Quatro gatilhos de save de posição (pause, troca de modo, saída, visibility).
+- Sessão nasce no primeiro play — abertura sem play não gera sessão.
+- **(Fechado em 2026-07-13)** Seção "Abandonados" separada e recolhida por
+  padrão na biblioteca, com modal de confirmação de 3 escolhas ao clicar num
+  item — nenhuma escolha bloqueia a exploração do documento.
+- **(Fechado em 2026-07-13)** Select de status mostra estado neutro
+  ("— sem status —", só visual) para docs nunca abertos, em vez de
+  pré-selecionar "Quero ler".
+
+**Fora de escopo (YAGNI):**
+- Visualização de sessões passadas — Fase 9 (dashboard).
+- Filtro por prateleira na biblioteca — Fase 7.
+- Anti-inflação de `words_advanced` — limitação aceita (ver abaixo).
+- Conflito de posição entre dispositivos — last-write-wins, sem SLA.
+- Endpoint de listagem de sessões — sem consumidor até Fase 9.
+
+**Limitações aceitas:**
+- `words_advanced` pode inflar: play sem leitura ativa e saltos de navegação
+  contam como avanço — sem detecção de atenção real.
+- App morto abruptamente (OOM, force-close) e reaberto em menos de 5min pode
+  deixar sessão órfã aberta convivendo com a nova. Detectada e fechada só
+  após o timeout de 5min na próxima abertura do mesmo documento. Sem impacto
+  funcional na leitura — mesmo espírito das "palavras lidas podem inflar"
+  já aceitas no ROADMAP.
+
+**Testes previstos antes de Samuel autorizar:**
+1. Restauração de posição: abrir doc, ler até N, voltar à biblioteca,
+   reabrir → motor começa em N (não em 0).
+2. **Teste adversarial:** conta A lê doc X até posição N → `GET
+   /documents/{X}/progress` autenticado como conta B retorna `position=0`
+   (linha inexistente) — nunca N.
+3. **Privado + progresso:** `PUT /documents/{privado}/progress` como
+   não-dono → 404 idêntico ao "documento não existe".
+4. **Opt-out de coleta:** conta com `collect_stats=0` → play → zero linhas
+   em `reading_sessions`; `reading_progress` funciona normalmente.
+5. Status automático ao abrir: primeiro acesso ao doc → `status='lendo'`
+   na resposta; `'abandonado'` pré-existente não é sobrescrito (se presunção
+   confirmada).
+6. `status='lido'` ao fim: chegar ao `onEnd()` → verificar no banco.
+7. Seletor manual: mudar status via `<select>` → request enviado →
+   status correto persistido; leitor não abre (`stopPropagation`).
+8. `visibilitychange` em celular real (Android Chrome): minimizar durante
+   leitura → reabrir → posição salva sem pause explícito.
+9. Cascade ao deletar documento: `reading_progress` e `reading_sessions`
+   somem junto (verificar no banco).
+10. Cascade ao deletar usuário (direto no banco, sem endpoint de UI ainda):
+    idem.
+11. Barra de progresso: doc de 1.000 palavras, posição 500 → barra ~50%.
+12. Doc nunca aberto: `progress_position=null` → barra oculta; select mostra
+    "— sem status —" (neutro, não gravado até uma escolha real ser feita).
+13. Seção "Abandonados": marcar um doc como abandonado → some da lista
+    principal e aparece na seção recolhida; seção começa fechada ao carregar
+    a biblioteca.
+14. Modal de confirmação: clicar no título de um item abandonado → modal
+    aparece com as 3 opções; cada uma abre o leitor em seguida (nenhuma
+    bloqueia); "Continuar lendo" e "Quero ler" persistem o novo status via
+    `PUT`, "Manter abandonado" não dispara request nenhum.
+
+**Implementado e testado ao vivo no navegador** (2026-07-13): todos os 14
+testes acima confirmados, incluindo os dois adversariais (posição de outra
+conta nunca vaza via `GET /progress`; documento privado de outra conta
+retorna 404 idêntico em `GET`/`PUT /progress`) e o cascade duplo (deletar
+documento e deletar usuário removem `reading_progress`/`reading_sessions`
+sem órfão). Upsert lazy confirmado promovendo `quero_ler`→`lendo` só na
+condição certa; `abandonado`/`lido` confirmados não sobrescritos pela
+reabertura. Seção "Abandonados" nativa via `<details>` (recolhida por
+padrão sem JS) e modal de 3 escolhas testados nos dois branches que geram
+PUT ("Continuar lendo", "Quero ler") e no que não gera nenhum ("Manter
+abandonado"). Opt-out de `collect_stats` confirmado: `POST /sessions`
+retorna `session_id: null` e zero linha gravada, `reading_progress`
+funciona normalmente de qualquer forma. `visibilitychange→hidden`
+confirmado salvando posição sem precisar de pause explícito. Uma nota de
+comportamento emergente, não um bug: como toda abertura do leitor promove
+`quero_ler`→`lendo` (por design), escolher "Quero ler" no modal de
+abandonado e escolher "Continuar lendo" convergem para o mesmo status
+`'lendo'` assim que o leitor abre — a diferença entre as duas opções dura
+só a fração de segundo antes do `GET /progress` da abertura rodar. Aceito
+como consequência natural de "abrir para explorar é abrir para ler".
+Dados de teste (2ª conta descartável e documento privado de teste)
+removidos após a validação. Nenhum código commitado ainda — aguardando
+teste e autorização do usuário.
+
+**Bug encontrado pelo Samuel em teste ao vivo (2026-07-13) e corrigido:**
+`doRewind()`/`doForward()` em `app.js` chamam `engine.rewind()`/
+`engine.forward()`, que pausam o motor internamente — mas os wrappers não
+chamavam `saveProgress()`, então retroceder/avançar durante a leitura não
+salvava a posição (só o pause explícito pelo botão salvava). Mesma causa
+raiz também afetava o scrubber. Corrigido adicionando `saveProgress()` nos
+três pontos (rewind, forward, `pointerup`/`pointercancel` do scrubber —
+não em `pointermove`, para não gerar um PUT por frame do arrasto).
 
 #### [ ] Fase 6 — Import: arquivo + URL (+ TOC)
 *Depende de: Fase 4 (visibilidade/owner no upload). Desbloqueia: TTS com

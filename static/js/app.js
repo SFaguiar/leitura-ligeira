@@ -69,6 +69,16 @@ const newProfileSubmitBtn = document.getElementById("new-profile-submit-btn");
 
 const docPrivateInput = document.getElementById("doc-private");
 
+const abandonedSection = document.getElementById("abandoned-section");
+const abandonedSummary = document.getElementById("abandoned-summary");
+const abandonedList = document.getElementById("abandoned-list");
+
+const abandonedModal = document.getElementById("abandoned-modal");
+const abandonedModalTitle = document.getElementById("abandoned-modal-title");
+const abandonedResumeBtn = document.getElementById("abandoned-resume-btn");
+const abandonedWishlistBtn = document.getElementById("abandoned-wishlist-btn");
+const abandonedKeepBtn = document.getElementById("abandoned-keep-btn");
+
 // ---- Settings module (single source of truth) ----
 // Everything the reader remembers goes through get/set here, under one
 // naming convention. Fase 4 (contas) redirects this module to the server —
@@ -465,6 +475,12 @@ document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && engine.playing && !wakeLock) {
         acquireWakeLock();
     }
+    // Minimizar/trocar de app no celular não dispara pause explícito — este
+    // é o gatilho mais confiável em mobile (beforeunload é inconsistente,
+    // especialmente no iOS). Não fecha a sessão: só uma pausa, não o fim.
+    if (document.visibilityState === "hidden" && !readerView.hidden) {
+        saveProgress();
+    }
 });
 
 // ---- Shrink-to-fit (long words/URLs must not wrap — that moves the eye,
@@ -736,6 +752,10 @@ const engine = new RSVPEngine({
             fitDisplayText("Fim");
         }
         progressFill.style.width = "100%";
+        // Fim de documento é sinal inequívoco no RSVP — marca 'lido'
+        // automaticamente (reversível a qualquer momento na biblioteca).
+        saveProgress({ status: "lido" });
+        closeSession();
     },
 });
 
@@ -749,18 +769,26 @@ function refreshPlayButton() {
 }
 
 function doTogglePlay(btn) {
+    const wasPlaying = engine.playing;
     engine.toggle();
     refreshPlayButton();
+    if (!wasPlaying && engine.playing) {
+        openSessionIfNeeded();
+    } else if (wasPlaying && !engine.playing) {
+        saveProgress();
+    }
     if (btn) btn.blur();
 }
 function doRewind(btn) {
     engine.rewind();
     refreshPlayButton();
+    saveProgress();
     if (btn) btn.blur();
 }
 function doForward(btn) {
     engine.forward();
     refreshPlayButton();
+    saveProgress();
     if (btn) btn.blur();
 }
 
@@ -778,6 +806,7 @@ function switchMode(mode, { push = true } = {}) {
     if (navPauseOnSwitch && engine.playing) {
         engine.pause();
     }
+    saveProgress();
     activeMode = mode;
     setSetting("activeMode", mode);
     applyModeUI(mode);
@@ -822,9 +851,11 @@ scrubber.addEventListener("pointermove", (e) => {
 });
 scrubber.addEventListener("pointerup", () => {
     scrubbing = false;
+    saveProgress();
 });
 scrubber.addEventListener("pointercancel", () => {
     scrubbing = false;
+    saveProgress();
 });
 
 wpmSlider.addEventListener("input", () => {
@@ -869,12 +900,90 @@ document.addEventListener("keydown", (e) => {
     }
 });
 
+// ---- Progresso e sessões por usuário (Fase 5) ----
+// currentSessionId != null enquanto uma sessão está aberta para o documento
+// atual; nasce no primeiro play (não na abertura do documento) e é fechada
+// ao sair do leitor ou ao terminar. O heartbeat roda a cada ~30s mas só
+// efetivamente grava enquanto engine.playing — mantê-lo vivo mesmo pausado
+// evita o custo de start/stop a cada toggle, o no-op é barato.
+let currentSessionId = null;
+let heartbeatTimer = null;
+
+async function saveProgress(extraFields = {}) {
+    if (!currentDocId) return;
+    await apiFetch(`/documents/${currentDocId}/progress`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: engine.pointer, ...extraFields }),
+    });
+}
+
+function startHeartbeatIfNeeded() {
+    if (heartbeatTimer) return;
+    heartbeatTimer = setInterval(sendHeartbeat, 30_000);
+}
+
+async function sendHeartbeat() {
+    if (!currentSessionId || !engine.playing) return;
+    await apiFetch(`/sessions/${currentSessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ end_pointer: engine.pointer, position: engine.pointer }),
+    });
+}
+
+async function openSessionIfNeeded() {
+    if (currentSessionId !== null || !currentDocId) return;
+    const res = await apiFetch("/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document_id: currentDocId, mode: activeMode, start_pointer: engine.pointer }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    // session_id vem null quando collect_stats está desligado — opt-out
+    // respeitado no momento de gravar, não só de listar.
+    if (data.session_id != null) {
+        currentSessionId = data.session_id;
+        startHeartbeatIfNeeded();
+    }
+}
+
+async function closeSession() {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    if (!currentSessionId) return;
+    const sessionId = currentSessionId;
+    currentSessionId = null;
+    const wpm = Number(wpmSlider.value) || 300;
+    await apiFetch(`/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            end_pointer: engine.pointer,
+            position: engine.pointer,
+            ended_at: true,
+            avg_wpm: wpm,
+        }),
+    });
+}
+
+function resetSessionState() {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    currentSessionId = null;
+}
+
 // ---- Navigation ----
 // Real history entries (pushState) so the Android back gesture/button moves
 // reader → library instead of leaving the site, reloading inside the reader
 // (or following a #/read/{id}/{mode} link) opens straight to that document
 // and mode, and Fluxo→Foco→biblioteca pops one level at a time.
 function showLibrary(push = true) {
+    if (currentDocId) {
+        saveProgress();
+        closeSession();
+    }
     engine.pause();
     readerView.hidden = true;
     libraryView.hidden = false;
@@ -884,6 +993,13 @@ function showLibrary(push = true) {
 }
 
 async function showReader(id, push = true, mode = "focus") {
+    // Trocar de documento direto (via popstate entre duas leituras, sem
+    // passar pela biblioteca) precisa fechar a sessão/salvar a posição do
+    // documento anterior antes de carregar o novo.
+    if (currentDocId && currentDocId !== id) {
+        saveProgress();
+        closeSession();
+    }
     const res = await apiFetch(`/documents/${id}`);
     if (!res.ok) {
         if (res.status !== 401) alert("Não foi possível carregar o documento.");
@@ -891,6 +1007,7 @@ async function showReader(id, push = true, mode = "focus") {
     }
     const doc = await res.json();
     currentDocId = id;
+    resetSessionState();
     readerTitle.textContent = doc.title;
     // Reveal the reader view — and the correct mode region — *before*
     // loading. engine.load() renders the first chunk synchronously via
@@ -919,6 +1036,19 @@ async function showReader(id, push = true, mode = "focus") {
     }
     refreshPlayButton();
     if (push) history.pushState({ view: "reader", id, mode }, "", `#/read/${id}/${mode}`);
+
+    // Restaura a posição depois do load() (que sempre reseta o ponteiro pra
+    // 0) — upsert lazy no servidor: cria a linha se não existir e promove
+    // 'quero_ler' -> 'lendo' automaticamente, sem sobrescrever 'lido'/'abandonado'.
+    const progressRes = await apiFetch(`/documents/${id}/progress`);
+    if (progressRes.ok) {
+        const progress = await progressRes.json();
+        // seekToIndex() já dispara _render() -> onChunk, que já sabe decidir
+        // entre Foco/Fluxo — nenhuma chamada extra de highlight necessária.
+        if (progress.position > 0) {
+            engine.seekToIndex(progress.position);
+        }
+    }
 }
 
 window.addEventListener("popstate", (e) => {
@@ -955,43 +1085,129 @@ function estimatedMinutes(wordCount) {
     return Math.max(1, Math.round(wordCount / wpm));
 }
 
+// Estado null (nunca aberto) mostra "— sem status —": placeholder só visual,
+// nunca enviado via PUT — evita fingir que uma escolha já foi feita quando
+// não existe linha em reading_progress ainda.
+function buildDocListItem(doc) {
+    const manageable = canManage(doc);
+    const isAbandoned = doc.progress_status === "abandonado";
+    const pct = doc.word_count && doc.progress_position != null
+        ? Math.min(100, Math.round((doc.progress_position / doc.word_count) * 100))
+        : 0;
+
+    const li = document.createElement("li");
+    li.innerHTML = `
+        <div class="doc-info">
+            <div class="doc-title"></div>
+            <div class="doc-meta"></div>
+            <div class="doc-progress-bar" ${doc.progress_status ? "" : "hidden"}>
+                <div class="doc-progress-fill" style="width: ${pct}%"></div>
+            </div>
+        </div>
+        <div class="doc-actions">
+            <select class="status-select" title="Status de leitura">
+                ${doc.progress_status ? "" : '<option value="" selected disabled>— sem status —</option>'}
+                <option value="quero_ler" ${doc.progress_status === "quero_ler" ? "selected" : ""}>⭐ Quero ler</option>
+                <option value="lendo" ${doc.progress_status === "lendo" ? "selected" : ""}>🔖 Lendo</option>
+                <option value="lido" ${doc.progress_status === "lido" ? "selected" : ""}>✅ Lido</option>
+                <option value="abandonado" ${doc.progress_status === "abandonado" ? "selected" : ""}>🚫 Abandonado</option>
+            </select>
+            ${manageable ? '<button class="icon-btn rename-btn" title="Renomear">✏️</button><button class="icon-btn delete-btn" title="Excluir">🗑️</button>' : ""}
+        </div>
+    `;
+    li.querySelector(".doc-title").textContent = doc.title;
+    const privacyTag = doc.visibility === "private" ? " · 🔒 privado" : "";
+    li.querySelector(".doc-meta").textContent =
+        `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
+        `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}${privacyTag}`;
+
+    li.querySelector(".doc-info").addEventListener("click", () => {
+        if (isAbandoned) {
+            openAbandonedModal(doc);
+        } else {
+            showReader(doc.id);
+        }
+    });
+
+    li.querySelector(".status-select").addEventListener("change", async (e) => {
+        e.stopPropagation();
+        const newStatus = e.target.value;
+        if (!newStatus) return;
+        await apiFetch(`/documents/${doc.id}/progress`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus }),
+        });
+        loadLibrary();
+    });
+
+    if (manageable) {
+        li.querySelector(".rename-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
+            renameDocument(doc);
+        });
+        li.querySelector(".delete-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteDocument(doc);
+        });
+    }
+    return li;
+}
+
 async function loadLibrary() {
     const res = await apiFetch("/documents");
     if (!res.ok) return;
     const docs = await res.json();
     documentList.innerHTML = "";
+    abandonedList.innerHTML = "";
     libraryEmpty.hidden = docs.length > 0;
-    docs.forEach((doc) => {
-        const manageable = canManage(doc);
-        const li = document.createElement("li");
-        li.innerHTML = `
-            <div class="doc-info">
-                <div class="doc-title"></div>
-                <div class="doc-meta"></div>
-            </div>
-            <div class="doc-actions">
-                ${manageable ? '<button class="icon-btn rename-btn" title="Renomear">✏️</button><button class="icon-btn delete-btn" title="Excluir">🗑️</button>' : ""}
-            </div>
-        `;
-        li.querySelector(".doc-title").textContent = doc.title;
-        const privacyTag = doc.visibility === "private" ? " · 🔒 privado" : "";
-        li.querySelector(".doc-meta").textContent =
-            `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
-            `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}${privacyTag}`;
-        li.querySelector(".doc-info").addEventListener("click", () => showReader(doc.id));
-        if (manageable) {
-            li.querySelector(".rename-btn").addEventListener("click", (e) => {
-                e.stopPropagation();
-                renameDocument(doc);
-            });
-            li.querySelector(".delete-btn").addEventListener("click", (e) => {
-                e.stopPropagation();
-                deleteDocument(doc);
-            });
-        }
-        documentList.appendChild(li);
-    });
+
+    const activeDocs = docs.filter((d) => d.progress_status !== "abandonado");
+    const abandonedDocs = docs.filter((d) => d.progress_status === "abandonado");
+
+    activeDocs.forEach((doc) => documentList.appendChild(buildDocListItem(doc)));
+    abandonedDocs.forEach((doc) => abandonedList.appendChild(buildDocListItem(doc)));
+
+    abandonedSection.hidden = abandonedDocs.length === 0;
+    abandonedSummary.textContent = `Abandonados (${abandonedDocs.length})`;
 }
+
+// ---- Modal de confirmação para documentos abandonados ----
+// Recolhida por padrão (seção acima); clicar num item aqui não abre direto
+// no leitor — pergunta a intenção primeiro. Todas as três escolhas abrem o
+// leitor em seguida (o modal nunca bloqueia a exploração).
+let abandonedModalDoc = null;
+
+function openAbandonedModal(doc) {
+    abandonedModalDoc = doc;
+    abandonedModalTitle.textContent = doc.title;
+    abandonedModal.hidden = false;
+}
+function closeAbandonedModal() {
+    abandonedModal.hidden = true;
+    abandonedModalDoc = null;
+}
+abandonedModal.addEventListener("click", (e) => {
+    if (e.target === abandonedModal) closeAbandonedModal();
+});
+
+async function resolveAbandonedAndOpen(newStatus) {
+    const doc = abandonedModalDoc;
+    closeAbandonedModal();
+    if (!doc) return;
+    if (newStatus) {
+        await apiFetch(`/documents/${doc.id}/progress`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus }),
+        });
+    }
+    showReader(doc.id);
+}
+
+abandonedResumeBtn.addEventListener("click", () => resolveAbandonedAndOpen("lendo"));
+abandonedWishlistBtn.addEventListener("click", () => resolveAbandonedAndOpen("quero_ler"));
+abandonedKeepBtn.addEventListener("click", () => resolveAbandonedAndOpen(null));
 
 async function renameDocument(doc) {
     const newTitle = window.prompt("Novo título:", doc.title);
@@ -1051,6 +1267,7 @@ document.addEventListener("keydown", (e) => {
     if (!newDocModal.hidden) closeModal();
     if (!loginModal.hidden) closeLoginModal();
     if (!newProfileModal.hidden) closeNewProfileModal();
+    if (!abandonedModal.hidden) closeAbandonedModal();
 });
 
 saveDocBtn.addEventListener("click", async () => {

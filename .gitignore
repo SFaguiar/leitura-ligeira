@@ -17,3 +17,6 @@ data/secret_key
 # OS
 .DS_Store
 Thumbs.db
+
+# Agentes IA — comunicação entre agentes, nunca commitar
+IA/

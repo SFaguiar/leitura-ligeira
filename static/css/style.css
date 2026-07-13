@@ -149,6 +149,51 @@ body {
     margin-top: 2rem;
 }
 
+.doc-progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 0.4rem;
+    overflow: hidden;
+}
+
+.doc-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+}
+
+.status-select {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.8rem;
+    max-width: 8.5rem;
+}
+
+/* Recolhida por padrão (nativo do <details>) — evita clique acidental num
+   documento já descartado; abrir cada item mostra o modal de confirmação. */
+.abandoned-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.8rem;
+}
+
+.abandoned-section summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.4rem 0;
+}
+
+.abandoned-section .document-list {
+    margin-top: 0.8rem;
+    opacity: 0.75;
+}
+
 .profile-list {
     list-style: none;
     padding: 0;
@@ -241,6 +286,21 @@ body {
     justify-content: flex-end;
     gap: 0.5rem;
     margin-top: 1rem;
+}
+
+.modal-subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0 0 0.5rem;
+}
+
+.modal-actions-stack {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.modal-actions-stack .btn {
+    width: 100%;
 }
 
 .reader-topbar {

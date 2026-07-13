@@ -56,7 +56,23 @@
     </div>
     <ul id="document-list" class="document-list"></ul>
     <p id="library-empty" class="empty-hint" hidden>Nenhum texto ainda. Cole um texto para começar.</p>
+    <details id="abandoned-section" class="abandoned-section" hidden>
+        <summary id="abandoned-summary">Abandonados</summary>
+        <ul id="abandoned-list" class="document-list"></ul>
+    </details>
 </main>
+
+<div id="abandoned-modal" class="modal" hidden>
+    <div class="modal-card">
+        <h2>Retomar este documento?</h2>
+        <p id="abandoned-modal-title" class="modal-subtitle"></p>
+        <div class="modal-actions modal-actions-stack">
+            <button id="abandoned-resume-btn" class="btn btn-primary">Continuar lendo</button>
+            <button id="abandoned-wishlist-btn" class="btn">Quero ler</button>
+            <button id="abandoned-keep-btn" class="btn">Manter abandonado (só explorar)</button>
+        </div>
+    </div>
+</div>
 
 <div id="new-doc-modal" class="modal" hidden>
     <div class="modal-card">

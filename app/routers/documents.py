@@ -112,10 +112,18 @@ def list_documents(user: dict = Depends(get_current_user)):
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT id, title, format, source_type, word_count, visibility, owner_id, created_at "
-            "FROM documents WHERE visibility = 'house' OR owner_id = ? "
-            "ORDER BY created_at DESC",
-            (user["id"],),
+            """
+            SELECT d.id, d.title, d.format, d.source_type, d.word_count,
+                   d.visibility, d.owner_id, d.created_at,
+                   rp.position AS progress_position,
+                   rp.status   AS progress_status
+            FROM documents d
+            LEFT JOIN reading_progress rp
+                   ON rp.document_id = d.id AND rp.user_id = ?
+            WHERE d.visibility = 'house' OR d.owner_id = ?
+            ORDER BY d.created_at DESC
+            """,
+            (user["id"], user["id"]),
         ).fetchall()
     finally:
         conn.close()

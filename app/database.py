@@ -41,6 +41,29 @@ CREATE TABLE IF NOT EXISTS user_settings (
     collect_stats INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS reading_progress (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'quero_ler',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    PRIMARY KEY (user_id, document_id)
+);
+
+CREATE TABLE IF NOT EXISTS reading_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    mode TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    start_pointer INTEGER NOT NULL DEFAULT 0,
+    end_pointer INTEGER,
+    words_advanced INTEGER,
+    avg_wpm REAL
+);
 """
 
 # Columns added after the initial release — each gets a migration entry so
@@ -70,6 +93,12 @@ def init_db() -> None:
     try:
         conn.executescript(SCHEMA)
         conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reading_progress_user ON reading_progress(user_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reading_sessions_user_doc ON reading_sessions(user_id, document_id)"
+        )
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(documents)")}
         for column_name, migration_sql in MIGRATIONS:
             if column_name not in columns:
