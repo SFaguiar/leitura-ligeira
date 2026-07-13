@@ -11,6 +11,23 @@ const docTitleInput = document.getElementById("doc-title");
 const docTextInput = document.getElementById("doc-text");
 const saveDocBtn = document.getElementById("save-doc-btn");
 const cancelDocBtn = document.getElementById("cancel-doc-btn");
+const docPrivateInput = document.getElementById("doc-private");
+const docError = document.getElementById("doc-error");
+
+const docTabPasteBtn = document.getElementById("doc-tab-paste-btn");
+const docTabFileBtn = document.getElementById("doc-tab-file-btn");
+const docTabUrlBtn = document.getElementById("doc-tab-url-btn");
+const docTabPastePanel = document.getElementById("doc-tab-paste");
+const docTabFilePanel = document.getElementById("doc-tab-file");
+const docTabUrlPanel = document.getElementById("doc-tab-url");
+const docFileTitleInput = document.getElementById("doc-file-title");
+const docFileInput = document.getElementById("doc-file-input");
+const docUrlTitleInput = document.getElementById("doc-url-title");
+const docUrlInput = document.getElementById("doc-url-input");
+
+const tocBtn = document.getElementById("toc-btn");
+const tocDropdown = document.getElementById("toc-dropdown");
+const tocList = document.getElementById("toc-list");
 
 const backBtn = document.getElementById("back-btn");
 const readerTitle = document.getElementById("reader-title");
@@ -67,17 +84,23 @@ const newProfileError = document.getElementById("new-profile-error");
 const newProfileCancelBtn = document.getElementById("new-profile-cancel-btn");
 const newProfileSubmitBtn = document.getElementById("new-profile-submit-btn");
 
-const docPrivateInput = document.getElementById("doc-private");
-
-const abandonedSection = document.getElementById("abandoned-section");
-const abandonedSummary = document.getElementById("abandoned-summary");
-const abandonedList = document.getElementById("abandoned-list");
-
 const abandonedModal = document.getElementById("abandoned-modal");
 const abandonedModalTitle = document.getElementById("abandoned-modal-title");
 const abandonedResumeBtn = document.getElementById("abandoned-resume-btn");
 const abandonedWishlistBtn = document.getElementById("abandoned-wishlist-btn");
 const abandonedKeepBtn = document.getElementById("abandoned-keep-btn");
+
+const librarySearchInput = document.getElementById("library-search");
+const libraryCollectionFilter = document.getElementById("library-collection-filter");
+const shelfTabButtons = document.querySelectorAll(".shelf-tabs .mode-btn");
+
+const editDocModal = document.getElementById("edit-doc-modal");
+const editDocTitleInput = document.getElementById("edit-doc-title");
+const editDocCollectionInput = document.getElementById("edit-doc-collection");
+const editDocCollectionList = document.getElementById("edit-doc-collection-list");
+const editDocError = document.getElementById("edit-doc-error");
+const editDocCancelBtn = document.getElementById("edit-doc-cancel-btn");
+const editDocSaveBtn = document.getElementById("edit-doc-save-btn");
 
 // ---- Settings module (single source of truth) ----
 // Everything the reader remembers goes through get/set here, under one
@@ -601,38 +624,131 @@ function renderChunk(tokens) {
 // doesn't rebuild the DOM. One click listener on the container (event
 // delegation) instead of one per word, since a document can have tens of
 // thousands of tokens.
+//
+// Lazy spanification (Fase 6.1): building a <span> per word up-front froze
+// the tab for ~7s on a 146k-word book. Instead each paragraph starts as
+// plain text (a <div> with a text node — near-instant to build for the
+// whole document, so native scroll height and Ctrl+F work immediately) and
+// only becomes per-word <span>s when it's near the viewport (spanified on
+// scroll) or when the reading highlight needs a word inside it (force-spanify).
+//
+// Trigger is a throttled scroll handler with a binary search on offsetTop —
+// not IntersectionObserver. IO is the "textbook" choice but its async
+// intersection callback doesn't fire at all in the headless test browser,
+// so it couldn't be verified live; the scroll+offsetTop approach reaches the
+// exact same end state (lazy, no freeze, native scroll/Ctrl+F intact) and is
+// verifiable. offsetTop is monotonic across paragraphs (they stack in order),
+// which is what makes the binary search valid — and .flow-content is
+// position:relative so offsetTop shares scrollTop's coordinate space.
 let flowBuiltForTokens = null;
-let flowWordEls = [];
+let flowParagraphs = []; // [{ el, startIdx, spanified }] — startIdx = global token index of the paragraph's 1st word
 let flowFollowMode = true;
 let flowAutoScrolling = false;
 let flowAutoScrollTimer = null;
 let flowHighlightedEls = [];
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+function paragraphPlainText(tokens, startIdx, endIdx) {
+    let text = "";
+    for (let i = startIdx; i < endIdx; i++) {
+        text += (i > startIdx ? " " : "") + tokens[i].text;
+    }
+    return text;
+}
+
+// Replaces a paragraph's plain text with one <span class="flow-word"> per
+// word (idempotent — scroll-spanify and force-spanify can both target the
+// same paragraph). dataset.idx carries the GLOBAL token index so click and
+// highlight can address any word regardless of which paragraph it's in.
+function spanifyParagraph(pIdx) {
+    const para = flowParagraphs[pIdx];
+    if (!para || para.spanified) return;
+    const tokens = engine.getTokens();
+    const endIdx = pIdx + 1 < flowParagraphs.length ? flowParagraphs[pIdx + 1].startIdx : tokens.length;
+    para.el.textContent = "";
+    for (let i = para.startIdx; i < endIdx; i++) {
+        const span = document.createElement("span");
+        span.className = "flow-word";
+        span.textContent = tokens[i].text;
+        span.dataset.idx = i;
+        para.el.appendChild(span);
+        para.el.appendChild(document.createTextNode(" "));
+    }
+    para.spanified = true;
+}
+
+// Binary search: which paragraph owns a given global token index.
+function paragraphIndexForToken(tokenIdx) {
+    let lo = 0;
+    let hi = flowParagraphs.length - 1;
+    let result = 0;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (flowParagraphs[mid].startIdx <= tokenIdx) {
+            result = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return result;
+}
+
+// Spanifies every paragraph within one viewport-height above/below the
+// visible area. Binary search finds the first candidate by offsetTop
+// (monotonic), then a forward scan spanifies until past the bottom margin.
+function spanifyVisibleParagraphs() {
+    if (!flowParagraphs.length) return;
+    const view = flowContent.clientHeight;
+    const top = flowContent.scrollTop - view; // one screen of pre-spanify buffer
+    const bottom = flowContent.scrollTop + view * 2;
+
+    let lo = 0;
+    let hi = flowParagraphs.length - 1;
+    let startP = flowParagraphs.length;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (flowParagraphs[mid].el.offsetTop >= top) {
+            startP = mid;
+            hi = mid - 1;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    for (let i = Math.max(0, startP - 1); i < flowParagraphs.length; i++) {
+        if (flowParagraphs[i].el.offsetTop > bottom) break;
+        spanifyParagraph(i);
+    }
+}
+
 function buildFlowContent(tokens) {
     if (flowBuiltForTokens === tokens) return;
     flowContent.innerHTML = "";
+    flowParagraphs = [];
+
     const frag = document.createDocumentFragment();
-    let paragraphEl = document.createElement("div");
-    paragraphEl.className = "flow-paragraph";
+    let paragraphStart = 0;
+    const flushParagraph = (endIdx) => {
+        const el = document.createElement("div");
+        el.className = "flow-paragraph";
+        el.textContent = paragraphPlainText(tokens, paragraphStart, endIdx);
+        frag.appendChild(el);
+        flowParagraphs.push({ el, startIdx: paragraphStart, spanified: false });
+        paragraphStart = endIdx;
+    };
     tokens.forEach((token, idx) => {
-        const span = document.createElement("span");
-        span.className = "flow-word";
-        span.textContent = token.text;
-        span.dataset.idx = idx;
-        paragraphEl.appendChild(span);
-        paragraphEl.appendChild(document.createTextNode(" "));
-        if (token.paragraphEnd) {
-            frag.appendChild(paragraphEl);
-            paragraphEl = document.createElement("div");
-            paragraphEl.className = "flow-paragraph";
-        }
+        if (token.paragraphEnd) flushParagraph(idx + 1);
     });
-    frag.appendChild(paragraphEl);
+    if (paragraphStart < tokens.length || flowParagraphs.length === 0) {
+        flushParagraph(tokens.length);
+    }
     flowContent.appendChild(frag);
-    flowWordEls = flowContent.querySelectorAll(".flow-word");
+
     flowBuiltForTokens = tokens;
     flowHighlightedEls = [];
+    // Reading offsetTop below forces the layout the spanify pass needs, so a
+    // direct synchronous call is both correct and cheaper than deferring.
+    spanifyVisibleParagraphs(); // spanify whatever's on screen at the initial (top) position
 }
 
 function ensureFlowBuilt() {
@@ -667,17 +783,31 @@ function scrollFlowToCurrentWord(behavior) {
     }, 200);
 }
 
+// Resolves a global token index to its <span>, force-spanifying that
+// paragraph if the reader reached it before it scrolled into view (e.g. a
+// TOC jump or a restored position deep in the book). Returns null only if
+// the index is out of range.
+function flowWordEl(tokenIdx) {
+    const total = engine.getTokens().length;
+    if (tokenIdx < 0 || tokenIdx >= total || !flowParagraphs.length) return null;
+    const pIdx = paragraphIndexForToken(tokenIdx);
+    spanifyParagraph(pIdx);
+    // .children is element-only (the " " separators are text nodes, so they
+    // don't shift the index) — child[k] is the k-th word of the paragraph.
+    return flowParagraphs[pIdx].el.children[tokenIdx - flowParagraphs[pIdx].startIdx] || null;
+}
+
 // Highlights the *whole* chunk currently on screen (all N words when
 // "palavras por vez" > 1), not just its first word — so Flow matches what
 // Focus is actually flashing instead of looking like it skipped words.
 function updateFlowHighlight(chunkTokens) {
-    if (flowRegion.hidden || !flowWordEls.length) return;
+    if (flowRegion.hidden || !flowParagraphs.length) return;
     const start = engine.pointer;
     const count = chunkTokens ? chunkTokens.length : 1;
     flowHighlightedEls.forEach((el) => el.classList.remove("flow-current"));
     flowHighlightedEls = [];
-    for (let i = start; i < start + count && i < flowWordEls.length; i++) {
-        const el = flowWordEls[i];
+    for (let i = start; i < start + count; i++) {
+        const el = flowWordEl(i);
         if (el) {
             el.classList.add("flow-current");
             flowHighlightedEls.push(el);
@@ -689,6 +819,11 @@ function updateFlowHighlight(chunkTokens) {
 }
 
 flowContent.addEventListener("scroll", () => {
+    // Runs for every scroll (user or auto-follow) — new paragraphs entering
+    // the viewport need spanifying either way. Direct call (no rAF): the
+    // browser already rate-limits scroll events, and it's a binary search
+    // plus a bounded scan, not a full sweep.
+    spanifyVisibleParagraphs();
     if (flowAutoScrolling) return;
     if (flowFollowMode) {
         flowFollowMode = false;
@@ -988,7 +1123,7 @@ function showLibrary(push = true) {
     readerView.hidden = true;
     libraryView.hidden = false;
     currentDocId = null;
-    loadLibrary();
+    fetchLibrary();
     if (push) history.pushState({ view: "library" }, "", "#/");
 }
 
@@ -1009,6 +1144,8 @@ async function showReader(id, push = true, mode = "focus") {
     currentDocId = id;
     resetSessionState();
     readerTitle.textContent = doc.title;
+    closeTocDropdown();
+    renderToc(doc.toc);
     // Reveal the reader view — and the correct mode region — *before*
     // loading. engine.load() renders the first chunk synchronously via
     // onChunk, and fitDisplayText() needs rsvp-stage to already have real
@@ -1138,13 +1275,13 @@ function buildDocListItem(doc) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: newStatus }),
         });
-        loadLibrary();
+        fetchLibrary();
     });
 
     if (manageable) {
         li.querySelector(".rename-btn").addEventListener("click", (e) => {
             e.stopPropagation();
-            renameDocument(doc);
+            openEditDocModal(doc);
         });
         li.querySelector(".delete-btn").addEventListener("click", (e) => {
             e.stopPropagation();
@@ -1154,28 +1291,86 @@ function buildDocListItem(doc) {
     return li;
 }
 
-async function loadLibrary() {
-    const res = await apiFetch("/documents");
-    if (!res.ok) return;
-    const docs = await res.json();
-    documentList.innerHTML = "";
-    abandonedList.innerHTML = "";
-    libraryEmpty.hidden = docs.length > 0;
+// ---- Fase 7: busca, coleções e prateleiras como filtro de primeira classe ----
+// allFetchedDocs guarda a última resposta de /documents (já filtrada por
+// busca no servidor); prateleira e coleção filtram em memória — instantâneo,
+// sem round-trip extra, porque o resumo já vem com progress_status/collection.
+let allFetchedDocs = [];
+let currentShelf = "all";
+let currentCollection = "";
+let searchQuery = "";
+let searchDebounceTimer = null;
 
-    const activeDocs = docs.filter((d) => d.progress_status !== "abandonado");
-    const abandonedDocs = docs.filter((d) => d.progress_status === "abandonado");
+const SHELF_PREDICATES = {
+    all: () => true,
+    quero_ler: (d) => d.progress_status === "quero_ler",
+    lendo: (d) => d.progress_status === "lendo",
+    lido: (d) => d.progress_status === "lido",
+    abandonado: (d) => d.progress_status === "abandonado",
+};
 
-    activeDocs.forEach((doc) => documentList.appendChild(buildDocListItem(doc)));
-    abandonedDocs.forEach((doc) => abandonedList.appendChild(buildDocListItem(doc)));
-
-    abandonedSection.hidden = abandonedDocs.length === 0;
-    abandonedSummary.textContent = `Abandonados (${abandonedDocs.length})`;
+function populateCollectionFilter() {
+    const collections = [...new Set(allFetchedDocs.map((d) => d.collection).filter(Boolean))].sort();
+    const current = libraryCollectionFilter.value;
+    libraryCollectionFilter.innerHTML =
+        '<option value="">Todas as coleções</option>' +
+        collections.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+    if (collections.includes(current)) libraryCollectionFilter.value = current;
+    editDocCollectionList.innerHTML = collections.map((c) => `<option value="${escapeHtml(c)}"></option>`).join("");
 }
 
+function renderLibrary() {
+    documentList.innerHTML = "";
+    const predicate = SHELF_PREDICATES[currentShelf] || SHELF_PREDICATES.all;
+    const filtered = allFetchedDocs.filter(
+        (d) => predicate(d) && (!currentCollection || d.collection === currentCollection)
+    );
+    if (allFetchedDocs.length === 0) {
+        libraryEmpty.textContent = "Nenhum texto ainda. Cole um texto para começar.";
+        libraryEmpty.hidden = false;
+    } else if (filtered.length === 0) {
+        libraryEmpty.textContent = "Nenhum documento encontrado com esse filtro.";
+        libraryEmpty.hidden = false;
+    } else {
+        libraryEmpty.hidden = true;
+    }
+    filtered.forEach((doc) => documentList.appendChild(buildDocListItem(doc)));
+}
+
+async function fetchLibrary() {
+    const url = searchQuery ? `/documents?q=${encodeURIComponent(searchQuery)}` : "/documents";
+    const res = await apiFetch(url);
+    if (!res.ok) return;
+    allFetchedDocs = await res.json();
+    populateCollectionFilter();
+    renderLibrary();
+}
+
+librarySearchInput.addEventListener("input", () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+        searchQuery = librarySearchInput.value.trim();
+        fetchLibrary();
+    }, 300);
+});
+
+libraryCollectionFilter.addEventListener("change", () => {
+    currentCollection = libraryCollectionFilter.value;
+    renderLibrary();
+});
+
+shelfTabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+        currentShelf = btn.dataset.shelf;
+        shelfTabButtons.forEach((b) => b.classList.toggle("active", b === btn));
+        renderLibrary();
+    });
+});
+
 // ---- Modal de confirmação para documentos abandonados ----
-// Recolhida por padrão (seção acima); clicar num item aqui não abre direto
-// no leitor — pergunta a intenção primeiro. Todas as três escolhas abrem o
-// leitor em seguida (o modal nunca bloqueia a exploração).
+// Clicar num item abandonado (em qualquer prateleira, inclusive "Todos")
+// não abre direto no leitor — pergunta a intenção primeiro. Todas as três
+// escolhas abrem o leitor em seguida (o modal nunca bloqueia a exploração).
 let abandonedModalDoc = null;
 
 function openAbandonedModal(doc) {
@@ -1209,23 +1404,49 @@ abandonedResumeBtn.addEventListener("click", () => resolveAbandonedAndOpen("lend
 abandonedWishlistBtn.addEventListener("click", () => resolveAbandonedAndOpen("quero_ler"));
 abandonedKeepBtn.addEventListener("click", () => resolveAbandonedAndOpen(null));
 
-async function renameDocument(doc) {
-    const newTitle = window.prompt("Novo título:", doc.title);
-    if (newTitle === null) return;
-    const trimmed = newTitle.trim();
-    if (!trimmed || trimmed === doc.title) return;
+// ---- Editar documento (título + coleção) — Fase 7, substitui window.prompt ----
+let editDocTarget = null;
 
+function openEditDocModal(doc) {
+    editDocTarget = doc;
+    editDocTitleInput.value = doc.title;
+    editDocCollectionInput.value = doc.collection || "";
+    editDocError.hidden = true;
+    editDocModal.hidden = false;
+    editDocTitleInput.focus();
+}
+function closeEditDocModal() {
+    editDocModal.hidden = true;
+    editDocTarget = null;
+}
+editDocCancelBtn.addEventListener("click", closeEditDocModal);
+editDocModal.addEventListener("click", (e) => {
+    if (e.target === editDocModal) closeEditDocModal();
+});
+
+editDocSaveBtn.addEventListener("click", async () => {
+    const doc = editDocTarget;
+    if (!doc) return;
+    const title = editDocTitleInput.value.trim();
+    if (!title) {
+        editDocError.textContent = "Título não pode ser vazio.";
+        editDocError.hidden = false;
+        return;
+    }
     const res = await apiFetch(`/documents/${doc.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: trimmed }),
+        body: JSON.stringify({ title, collection: editDocCollectionInput.value.trim() }),
     });
     if (!res.ok) {
-        if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao renomear o documento."));
+        if (res.status === 401) return;
+        editDocError.textContent = await apiErrorMessage(res, "Falha ao salvar o documento.");
+        editDocError.hidden = false;
         return;
     }
-    loadLibrary();
-}
+    closeEditDocModal();
+    fetchLibrary();
+});
 
 async function deleteDocument(doc) {
     if (!window.confirm(`Excluir "${doc.title}"? Essa ação não pode ser desfeita.`)) {
@@ -1236,14 +1457,40 @@ async function deleteDocument(doc) {
         if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao excluir o documento."));
         return;
     }
-    loadLibrary();
+    fetchLibrary();
 }
 
-// ---- New document modal ----
+// ---- New document modal (Fase 6: três abas — colar/arquivo/URL) ----
+let activeDocTab = "paste";
+const DOC_TAB_PANELS = { paste: docTabPastePanel, file: docTabFilePanel, url: docTabUrlPanel };
+const DOC_TAB_BUTTONS = [docTabPasteBtn, docTabFileBtn, docTabUrlBtn];
+
+function switchDocTab(tab) {
+    activeDocTab = tab;
+    DOC_TAB_BUTTONS.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
+    Object.entries(DOC_TAB_PANELS).forEach(([key, panel]) => {
+        panel.hidden = key !== tab;
+    });
+}
+docTabPasteBtn.addEventListener("click", () => switchDocTab("paste"));
+docTabFileBtn.addEventListener("click", () => switchDocTab("file"));
+docTabUrlBtn.addEventListener("click", () => switchDocTab("url"));
+
+function showDocError(message) {
+    docError.textContent = message;
+    docError.hidden = false;
+}
+
 function openModal() {
     docTitleInput.value = "";
     docTextInput.value = "";
+    docFileTitleInput.value = "";
+    docFileInput.value = "";
+    docUrlTitleInput.value = "";
+    docUrlInput.value = "";
     docPrivateInput.checked = false;
+    docError.hidden = true;
+    switchDocTab("paste");
     newDocModal.hidden = false;
     docTitleInput.focus();
 }
@@ -1268,28 +1515,97 @@ document.addEventListener("keydown", (e) => {
     if (!loginModal.hidden) closeLoginModal();
     if (!newProfileModal.hidden) closeNewProfileModal();
     if (!abandonedModal.hidden) closeAbandonedModal();
+    if (!editDocModal.hidden) closeEditDocModal();
 });
 
 saveDocBtn.addEventListener("click", async () => {
-    const text = docTextInput.value.trim();
-    if (!text) {
-        alert("Cole algum texto antes de salvar.");
-        return;
-    }
-    const title = docTitleInput.value.trim() || text.slice(0, 40);
+    docError.hidden = true;
     const visibility = docPrivateInput.checked ? "private" : "house";
-    const res = await apiFetch("/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, raw_text: text, visibility }),
-    });
+    let res;
+
+    if (activeDocTab === "paste") {
+        const text = docTextInput.value.trim();
+        if (!text) {
+            showDocError("Cole algum texto antes de salvar.");
+            return;
+        }
+        const title = docTitleInput.value.trim() || text.slice(0, 40);
+        res = await apiFetch("/documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, raw_text: text, visibility }),
+        });
+    } else if (activeDocTab === "file") {
+        const file = docFileInput.files[0];
+        if (!file) {
+            showDocError("Escolha um arquivo.");
+            return;
+        }
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("title", docFileTitleInput.value.trim());
+        formData.append("visibility", visibility);
+        // Sem Content-Type explícito — o navegador define o boundary do
+        // multipart sozinho; setar manualmente quebraria o parsing no servidor.
+        res = await apiFetch("/documents/upload", { method: "POST", body: formData });
+    } else {
+        const url = docUrlInput.value.trim();
+        if (!url) {
+            showDocError("Cole uma URL.");
+            return;
+        }
+        res = await apiFetch("/documents/url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, title: docUrlTitleInput.value.trim(), visibility }),
+        });
+    }
+
     if (!res.ok) {
-        if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao salvar o documento."));
+        if (res.status !== 401) showDocError(await apiErrorMessage(res, "Falha ao salvar o documento."));
         return;
     }
     const doc = await res.json();
     closeModal();
     showReader(doc.id);
+});
+
+// ---- TOC (Fase 6) — botão "≡ Capítulos" na topbar do leitor ----
+let currentToc = null;
+
+function renderToc(toc) {
+    currentToc = toc;
+    tocBtn.hidden = !toc || toc.length === 0;
+    tocList.innerHTML = "";
+    if (!toc) return;
+    toc.forEach((entry) => {
+        const li = document.createElement("li");
+        li.textContent = entry.title;
+        li.addEventListener("click", () => {
+            engine.seekToIndex(entry.token_index);
+            refreshPlayButton();
+            saveProgress();
+            closeTocDropdown();
+        });
+        tocList.appendChild(li);
+    });
+}
+
+function openTocDropdown() {
+    if (!currentToc) return;
+    tocDropdown.hidden = false;
+}
+function closeTocDropdown() {
+    tocDropdown.hidden = true;
+}
+tocBtn.addEventListener("click", () => {
+    if (tocDropdown.hidden) openTocDropdown();
+    else closeTocDropdown();
+});
+document.addEventListener("click", (e) => {
+    if (tocDropdown.hidden) return;
+    if (e.target === tocBtn || tocDropdown.contains(e.target)) return;
+    closeTocDropdown();
 });
 
 // ---- Init ----

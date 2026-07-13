@@ -365,6 +365,47 @@ acima e as fases 4/5 abaixo.)*
 
 ---
 
+## Decisões Arquiteturais Recentes
+
+**Correção Arquitetural do Modo Fluxo (Decidido em 2026-07-13 após Fase 6) —
+IMPLEMENTADA E TESTADA ao vivo em 2026-07-13:**
+**Problema:** `buildFlowContent()` travava a tela por ~7s em livros grandes (ex: EPUB de 146k palavras) ao criar centenas de milhares de `<span>` síncronos.
+**Solução: Lazy Spanification (Virtualização Híbrida)**
+- Em vez de gerar spans para cada palavra do livro inteiro de uma vez, `buildFlowContent` divide os tokens em parágrafos e cria apenas as `<div>` contendo texto plano (`div.textContent = ...`). Isso é quase instantâneo e constrói o documento inteiro no DOM, garantindo que a barra de rolagem funcione com a altura real.
+- Quando o motor precisa acender a palavra atual em `updateFlowHighlight`, ele encontra o parágrafo daquele token (busca binária por `startIdx`). Se ainda não foi spanificado, força a spanification na hora. O highlight acessa o span diretamente via `div.children[tokenIndex - paragraphStartIndex]`.
+- Isso zera o travamento inicial, não polui a memória desnecessariamente, preserva a busca nativa (Ctrl+F) e evita a complexidade matemática infernal de calcular alturas dinâmicas para uma "Janela Virtual" tradicional.
+
+**Desvio do plano original, decidido pelo Claude durante a implementação:**
+o gatilho de spanificação **não é `IntersectionObserver`** como o plano
+especificava — é um handler de `scroll` com busca binária em `offsetTop`
+(uma tela de margem acima/abaixo do que está visível). Motivo: testado ao
+vivo, `IntersectionObserver` **não disparava nenhuma vez** no navegador de
+teste usado pra validação (confirmado isolando com um observer simples,
+raiz padrão, sem nenhuma opção customizada — nem esse disparou). Como a
+regra de trabalho é nunca declarar algo pronto sem verificar ao vivo, e o
+observer não pôde ser verificado, foi trocado por um mecanismo equivalente
+que pôde ser testado de ponta a ponta. Resultado idêntico (lazy, sem
+travamento, scroll/Ctrl+F nativos preservados) — só o gatilho mudou.
+`IntersectionObserver` deve funcionar normalmente em navegadores reais
+(Chrome/Safari); se um dia isso for revisitado, vale testar no celular
+real antes de reverter pro observer.
+
+**Testado ao vivo (2026-07-13), com o mesmo EPUB de 146.502 palavras:**
+entrar no Fluxo caiu de ~6.600ms para ~102-235ms (só o parágrafo visível +
+margem fica com spans; o resto continua texto plano). Confirmado: scroll
+spanifica parágrafos novos sob demanda; clique-pra-pular funciona; salto
+de TOC pra um capítulo a 134 mil palavras de distância força a
+spanificação daquele parágrafo específico e acende a palavra certa;
+destaque de leitura durante o play segue corretamente; documento pequeno
+(Sussus, 338 palavras) sem regressão — todos os parágrafos spanificam ao
+rolar até eles. Zero erro no console.
+
+*(As questões nº 1–5 da rodada anterior sobre contas/permissões/opt-out/
+prateleiras foram todas fechadas em 2026-07-12 — ver "Registro de decisões"
+acima e as fases 4/5 abaixo.)*
+
+---
+
 ## Backlog imediato (resolvido pelo desenho da Fase 3)
 
 Os dois itens de feedback abaixo deixam de ser correções pontuais e são
@@ -731,26 +772,200 @@ raiz também afetava o scrubber. Corrigido adicionando `saveProgress()` nos
 três pontos (rewind, forward, `pointerup`/`pointercancel` do scrubber —
 não em `pointermove`, para não gerar um PUT por frame do arrasto).
 
-#### [ ] Fase 6 — Import: arquivo + URL (+ TOC)
+#### [x] Fase 6 — Import: arquivo + URL (+ TOC)
 *Depende de: Fase 4 (visibilidade/owner no upload). Desbloqueia: TTS com
-conteúdo real, Fase 7 (biblioteca cheia pede organização).*
-- Upload PDF (PyMuPDF) / EPUB (`ebooklib`) / TXT; paste de URL via
-  `trafilatura` (sem headless browser; paywall/JS pesado falham com erro
-  claro).
-- Opção "privado" no upload. `format`/`source_type` refletem o tipo real.
-- **TOC como camada sobre o painel/Flow:** capítulos do EPUB e outline do PDF
-  mapeados a índices de token; texto colado continua sem TOC.
-- Limitações aceitas: PDF de 2 colunas/notas → ordem bagunçada; escaneado
-  (sem texto) fora — sem OCR.
+conteúdo real, Fase 7 (biblioteca cheia pede organização). Plano fechado
+na 9ª rodada de deliberação (2026-07-13).*
 
-#### [ ] Fase 7 — Pastas, busca e prateleiras na biblioteca
+**Resumo executivo:** Expande a adição de documentos para suportar upload de
+arquivos (PDF via `pymupdf`, EPUB via `ebooklib`, TXT) e extração de texto
+via URL (usando `trafilatura`). Adiciona suporte a sumário (TOC) para navegação,
+exposto como um menu na barra do leitor. O TOC é mapeado em índices de token
+para o motor RSVP pular com precisão.
+
+**Schema e Migração (bloco MIGRATIONS em `database.py`):**
+- A tabela `documents` ganha a coluna `toc TEXT` (armazenado como JSON nullable).
+- O formato do JSON é `[{"title": "Capítulo 1", "token_index": 120}, ...]`.
+- `format` e `source_type` já existem e receberão os valores corretos 
+  (ex: `format='pdf'`, `source_type='upload'`).
+
+**Novos endpoints (`app/routers/import_routes.py`):**
+Para não quebrar a compatibilidade da API existente (`POST /documents` via JSON),
+dois novos endpoints síncronos (rodando em thread pool via FastAPI `def`):
+1. `POST /documents/upload`: aceita `multipart/form-data`.
+   - Limita em `MAX_FILE_BYTES = 50 * 1024 * 1024` (50MB) em memória.
+   - Extrai o texto limpo, calcula os índices de token (`len(text[:char_offset].split())`) para o TOC.
+2. `POST /documents/url`: aceita JSON `{ "url": "..." }`.
+   - Valida SSRF bloqueando loopback (decisão A1).
+   - Usa `trafilatura.extract()` para buscar o conteúdo. Sem TOC gerado.
+
+*Regras aplicáveis a ambos:* dedupe por `content_hash` escopado ao dono (já
+existente), visibilidade (privado vs house), falham graciosamente (ex: PDF
+sem texto retorna 422 legível).
+
+**Dependências (adicionadas a `requirements.txt`):**
+- `pymupdf`, `ebooklib`, `trafilatura`. HTML do EPUB parseado nativamente 
+  usando `html.parser` da biblioteca padrão do Python.
+
+**Frontend (`index.html` e `app.js`):**
+- **Modal Unificado:** o botão "+ Novo texto" abre um modal remodelado com
+  três abas: **Colar texto**, **Arquivo**, **URL**.
+- **UI do TOC no leitor:** botão "≡ Capítulos" na topbar do leitor (Foco e 
+  Fluxo), abrindo um dropdown nativo ou customizado. Ao clicar no capítulo,
+  chama `engine.seekToIndex(idx)` e fecha o menu. Oculto via `hidden` se 
+  o documento não tiver `toc` no seu `DocumentDetail` (caso de colagens 
+  simples ou URLs sem outline).
+
+**Fora do escopo (Limitações aceitas - YAGNI):**
+- OCR em PDF escaneado (sem texto - falhará com erro claro).
+- Reparação da ordem de leitura em PDFs densos de 2 colunas.
+- Progress bar em streaming para o upload (bloqueia o UI com "Processando...").
+- Reprocessar TOC de documentos antigos.
+- Outros formatos (MOBI, AZW).
+
+**Checklist de testes pós-implementação (para Claude Code):**
+- [x] Paste: O antigo modal de "Colar texto" ainda funciona (agora como aba).
+- [x] EPUB (Teste Adversarial): Clicar num capítulo no TOC precisa pular *exatamente*
+      para a primeira palavra daquele capítulo no leitor (garante paridade
+      na tokenização Python vs JS).
+- [x] PDF grande (Proteção): Tentar subir arquivo > 50MB falha limpo.
+- [x] PDF Imagem (Proteção): Upload de PDF escaneado retorna erro 422 claro.
+- [x] URL com paywall/JS-only (Proteção): falha com erro 422 claro.
+- [x] URL SSRF (Adversarial): URL apontando para `http://localhost:8000` ou 
+      `http://127.0.0.1/` deve ser bloqueada.
+- [x] Duplicação: Fazer upload do mesmo arquivo duas vezes com o mesmo dono
+      retorna o mesmo ID (por `content_hash`).
+
+**Implementado e testado ao vivo no navegador** (2026-07-13): todos os 7 itens
+do checklist acima confirmados, incluindo o teste de precisão do TOC — clicar
+num capítulo (PDF e EPUB) pula para o índice de token exato via
+`engine.seekToIndex()`, verificado batendo o índice esperado calculado à mão
+contra o retornado pela API. Ajustes feitos durante a implementação, além do
+que estava no plano:
+- **Token index calculado por contagem de palavras cumulativa, não por
+  conversão de character offset.** O plano original sugeria
+  `len(text[:char_offset].split())`, mas nem PyMuPDF (só dá número de página
+  no outline) nem o mapeamento de capítulo do EPUB fornecem naturalmente um
+  character offset preciso — e um offset caindo no meio de uma palavra
+  quebraria a paridade com o tokenizer JS. Em vez disso, o índice de cada
+  entrada do TOC é a contagem de palavras acumulada até o início da
+  página (PDF) ou do arquivo de capítulo (EPUB) — nunca cai no meio de uma
+  palavra, e verificado exato nos dois formatos.
+- **Granularidade do TOC em PDF é por página** (a API do PyMuPDF só dá o
+  número da página no outline, não uma posição dentro dela) — o salto vai
+  para o início da página do capítulo, não para a linha exata do título.
+- **Granularidade do TOC em EPUB é por arquivo do spine** — uma entrada de
+  TOC apontando pra uma âncora dentro de um arquivo (comum em EPUBs de
+  arquivo único) cai no início do arquivo inteiro, não na sub-seção exata.
+  Aceito como simplificação (YAGNI) — cobre o caso comum de um
+  capítulo por arquivo.
+- **Proteção SSRF por resolução de IP, não checagem de string.** Resolve o
+  hostname via `socket.getaddrinfo` e verifica se o IP resultante é loopback
+  (`ipaddress.ip_address(...).is_loopback`) — cobre `localhost`, `127.0.0.1`
+  e variações, não só uma comparação textual. Limitação aceita, documentada
+  no código: não revalida o alvo de um redirect HTTP nem protege contra DNS
+  rebinding — aceitável para o modelo de ameaça deste projeto (contas de
+  confiança na LAN, não atacante externo adversarial).
+- **`UrlImportRequest` ganhou um campo `title` opcional** (não estava no
+  schema original do plano) — a aba de URL no modal unificado tem um campo
+  de título como a aba de arquivo, então o backend precisava aceitar um
+  override em vez de usar sempre o título extraído da página.
+- **Dependência nova não prevista:** `python-multipart`, exigida pelo
+  FastAPI para aceitar `UploadFile`/`Form` — sem ela o servidor nem sobe.
+
+**Correção pós-teste (2026-07-13):** Samuel testou com um livro real (EPUB,
+918.917 caracteres) e esbarrou no `MAX_TEXT_CHARS` de 500.000 — limite
+criado na Fase 1 pra pegar colagem acidental de texto enorme, baixo demais
+pra upload de livro de verdade. Corrigido diferenciando por origem:
+`documents.py::MAX_TEXT_CHARS` (500k) continua valendo só pra colar texto;
+`import_routes.py` ganhou `MAX_IMPORT_TEXT_CHARS = 5_000_000` pra
+upload/URL — o limite de 50MB do arquivo já é a proteção real ali. Testado
+com o livro real do Samuel (146.502 palavras, 26 capítulos) — upload
+funcionou.
+
+**Problema encontrado no mesmo teste, NÃO corrigido — ver "Questões em
+aberto":** modo Fluxo trava ~6-7s nesse mesmo livro (146.502 elementos de
+DOM). Aguardando deliberação do Antigravity antes de qualquer correção.
+
+Nenhum código commitado ainda — aguardando teste e autorização do usuário.
+
+#### [x] Fase 7 — Pastas, busca e prateleiras na biblioteca *(implementada 2026-07-13, aguardando teste do usuário)*
 *Depende de: Fase 5 (`reading_progress.status`); faz mais sentido após a
-Fase 6 encher a biblioteca.*
-- Pastas/coleções e busca por título/conteúdo (lacunas do SwiftRead
-  original). Respeita visibilidade (privados só na visão do dono).
-- **Filtro/agrupamento por prateleira** (quero ler/lendo/lido/abandonado) —
-  as prateleiras da Fase 5 viram navegação de verdade na biblioteca, não só
-  um campo salvo sem uso.
+Fase 6 encher a biblioteca. Plano fechado via deliberação autônoma.*
+
+**Resumo executivo:** Transforma a biblioteca em um painel organizável. Adiciona
+busca por título e conteúdo (no backend), organização em coleções simples,
+e eleva o status de leitura a um filtro de abas (prateleiras de primeira classe).
+
+**Schema e Migração (bloco MIGRATIONS em `database.py`):**
+- A tabela `documents` ganha a coluna `collection TEXT NOT NULL DEFAULT ''`.
+- Representa a pasta/coleção onde o documento está. Uma string plana é mais do que
+  suficiente para o escopo doméstico (sem necessidade de tabela `folders` relacional, 
+  mantendo a simplicidade).
+
+**Novos schemas (`schemas.py`):**
+- `DocumentSummary` e `DocumentDetail` ganham `collection: str`.
+- O antigo `DocumentRename` vira `DocumentUpdate`, aceitando atualizações parciais:
+  `title: str | None = None`, `collection: str | None = None`.
+
+**Endpoints (`app/routers/documents.py`):**
+- `GET /documents`:
+  - Recebe query param opcional `q: str | None = None`.
+  - Se `q` for fornecido, a cláusula WHERE ganha `AND (d.title LIKE ? OR d.raw_text LIKE ?)` com os valores `%q%`. A busca por conteúdo DEVE ser no backend pois o frontend não recebe `raw_text` no summary.
+- `PATCH /documents/{id}`:
+  - Passa a usar o `DocumentUpdate` e o handler pode ser renomeado para `update_document`. Atualiza o `title` (com `_unique_title`) se enviado. Atualiza a `collection` se enviada.
+
+**Frontend HTML/CSS (`index.html` e `style.css`):**
+- A biblioteca (`#library-view`) ganha uma barra de ferramentas no topo (`.library-toolbar`):
+  - Input de busca `#library-search` (`type="search"`, debounce).
+  - Dropdown `<select id="library-collection-filter">` ("Todas as coleções" como default).
+  - Navegação de prateleiras (tabs ou radio buttons estéticos): `[Todos] [Quero Ler] [Lendo] [Lido] [Abandonado]`.
+- Novo modal `#edit-doc-modal` com campos para Título e Coleção (substitui o antigo `window.prompt` de renomear). O campo de coleção é de texto livre, permitindo criar/atribuir coleções na hora.
+- A seção nativa do `<details id="abandoned-section">` (Fase 5) é **removida**. A visualização de abandonados passa a ser exclusivamente via o tab/filtro "Abandonado", unificando o DOM (uma única lista gerida dinamicamente).
+
+**Frontend JS (`app.js`):**
+- Novo estado local: `allFetchedDocs = []`, `currentShelf = "all"`, `currentCollection = ""`, `searchQuery = ""`.
+- `fetchLibrary()` (novo flow de `loadLibrary`):
+  - Dispara `GET /documents?q=...` (debounced se vindo do input de busca).
+  - Armazena em `allFetchedDocs`.
+  - Extrai coleções únicas (`collection !== ""`) para popular o `#library-collection-filter`.
+  - Chama `renderLibrary()`.
+- `renderLibrary()`:
+  - Filtra `allFetchedDocs` por `currentShelf` (mapeando "all" -> tudo, "quero_ler" -> `progress_status === "quero_ler"`, etc.) e por `currentCollection`.
+  - Limpa `#document-list` e anexa os itens via `buildDocListItem()`.
+- O botão `rename-btn` vira "Editar" (lápis) e abre o `#edit-doc-modal` preenchido. O submit dispara `PATCH /documents/{id}` e re-chama `fetchLibrary()`.
+
+**Fora do escopo (Limitações aceitas - YAGNI):**
+- Tabela relacional de pastas. (Se o último documento de "Ficção" for deletado, "Ficção" some do `<select>`).
+- Coleções aninhadas (sub-pastas).
+- Full Text Search (FTS5) nativo do SQLite (O `LIKE` cru é rápido o suficiente para o uso previsto e evita setup de extensões/tabelas virtuais complexas).
+
+**Ajustes feitos durante a implementação (2026-07-13):**
+- `LIKE` escapado explicitamente (`ESCAPE '\'`, substituindo `%`/`_` literais
+  do termo de busca do usuário) — sem isso, buscar por algo como "100%"
+  seria interpretado como wildcard e daria falsos positivos.
+- `DocumentUpdate.collection` limitado a 100 caracteres
+  (`MAX_COLLECTION_CHARS`), mesmo espírito do limite já existente em título.
+- O `<select>` de status por item (Fase 5, D1) **não foi removido** — as
+  abas de prateleira são um filtro de biblioteca inteira, o select continua
+  sendo a troca rápida por item. Os dois coexistem.
+- Confirmado que "Todos" mostra abandonados misturados com o resto (não os
+  esconde) — só a aba "Abandonado" isola; em qualquer um dos dois lugares,
+  clicar num item abandonado ainda abre o modal de confirmação da Fase 5
+  (protótipo de clique acidental preservado, não removido pela unificação
+  do DOM).
+- Adicionado um `<datalist>` de autocomplete de coleção no modal de editar
+  (não estava no plano, custo marginal zero já que a lista de coleções
+  únicas já existe pro filtro).
+
+**Testado ao vivo (2026-07-13):** busca por título e por conteúdo (uma
+mesma palavra batendo nos dois casos, confirmado com "reforma"); editar
+título+coleção via modal; filtro por coleção; as 5 abas de prateleira,
+com "Todos" mostrando tudo e "Abandonado" isolando; clique num item
+abandonado (em qualquer aba) ainda abre o modal de confirmação e não o
+leitor direto. Zero erro no console. Dados de teste revertidos após
+validar. Nenhum código commitado ainda — aguardando teste e autorização
+do usuário.
 
 #### [ ] Fase 8 — TTS sincronizado (nos dois modos)
 *Depende de: Fase 3 (substrato/modos), idealmente Fase 6 (conteúdo real).

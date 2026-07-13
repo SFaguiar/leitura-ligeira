@@ -54,12 +54,21 @@
     <div class="library-actions">
         <button id="new-doc-btn" class="btn btn-primary">+ Novo texto</button>
     </div>
+    <div class="library-toolbar">
+        <input id="library-search" class="library-search" type="search" placeholder="Buscar por título ou conteúdo..." />
+        <select id="library-collection-filter" class="library-collection-filter">
+            <option value="">Todas as coleções</option>
+        </select>
+    </div>
+    <div class="mode-switch shelf-tabs">
+        <button class="mode-btn active" data-shelf="all">Todos</button>
+        <button class="mode-btn" data-shelf="quero_ler">Quero ler</button>
+        <button class="mode-btn" data-shelf="lendo">Lendo</button>
+        <button class="mode-btn" data-shelf="lido">Lido</button>
+        <button class="mode-btn" data-shelf="abandonado">Abandonado</button>
+    </div>
     <ul id="document-list" class="document-list"></ul>
     <p id="library-empty" class="empty-hint" hidden>Nenhum texto ainda. Cole um texto para começar.</p>
-    <details id="abandoned-section" class="abandoned-section" hidden>
-        <summary id="abandoned-summary">Abandonados</summary>
-        <ul id="abandoned-list" class="document-list"></ul>
-    </details>
 </main>
 
 <div id="abandoned-modal" class="modal" hidden>
@@ -74,17 +83,57 @@
     </div>
 </div>
 
+<div id="edit-doc-modal" class="modal" hidden>
+    <div class="modal-card">
+        <h2>Editar documento</h2>
+        <label for="edit-doc-title">Título</label>
+        <input id="edit-doc-title" type="text" placeholder="Título" />
+        <label for="edit-doc-collection">Coleção (opcional)</label>
+        <input id="edit-doc-collection" type="text" placeholder="Ex: Ficção, Trabalho..." list="edit-doc-collection-list" />
+        <datalist id="edit-doc-collection-list"></datalist>
+        <p id="edit-doc-error" class="error-text" hidden></p>
+        <div class="modal-actions">
+            <button id="edit-doc-cancel-btn" class="btn">Cancelar</button>
+            <button id="edit-doc-save-btn" class="btn btn-primary">Salvar</button>
+        </div>
+    </div>
+</div>
+
 <div id="new-doc-modal" class="modal" hidden>
     <div class="modal-card">
-        <h2>Colar texto</h2>
-        <label for="doc-title">Título</label>
-        <input id="doc-title" type="text" placeholder="Ex: Artigo sobre X" />
-        <label for="doc-text">Texto</label>
-        <textarea id="doc-text" rows="10" placeholder="Cole o texto aqui..."></textarea>
+        <h2>Novo texto</h2>
+        <div class="mode-switch doc-tab-row">
+            <button id="doc-tab-paste-btn" class="mode-btn active" data-tab="paste">Colar texto</button>
+            <button id="doc-tab-file-btn" class="mode-btn" data-tab="file">Arquivo</button>
+            <button id="doc-tab-url-btn" class="mode-btn" data-tab="url">URL</button>
+        </div>
+
+        <div id="doc-tab-paste" class="doc-tab-panel">
+            <label for="doc-title">Título</label>
+            <input id="doc-title" type="text" placeholder="Ex: Artigo sobre X" />
+            <label for="doc-text">Texto</label>
+            <textarea id="doc-text" rows="10" placeholder="Cole o texto aqui..."></textarea>
+        </div>
+
+        <div id="doc-tab-file" class="doc-tab-panel" hidden>
+            <label for="doc-file-title">Título (opcional)</label>
+            <input id="doc-file-title" type="text" placeholder="Usa o nome do arquivo se vazio" />
+            <label for="doc-file-input">Arquivo — PDF, EPUB ou TXT (máx. 50MB)</label>
+            <input id="doc-file-input" type="file" accept=".pdf,.epub,.txt" />
+        </div>
+
+        <div id="doc-tab-url" class="doc-tab-panel" hidden>
+            <label for="doc-url-title">Título (opcional)</label>
+            <input id="doc-url-title" type="text" placeholder="Usa o título da página se vazio" />
+            <label for="doc-url-input">URL</label>
+            <input id="doc-url-input" type="url" placeholder="https://..." />
+        </div>
+
         <label class="checkbox-row">
             <input id="doc-private" type="checkbox" />
             Documento privado (só eu vejo)
         </label>
+        <p id="doc-error" class="error-text" hidden></p>
         <div class="modal-actions">
             <button id="cancel-doc-btn" class="btn">Cancelar</button>
             <button id="save-doc-btn" class="btn btn-primary">Salvar e ler</button>
@@ -95,6 +144,12 @@
 <main id="reader-view" class="view" hidden>
     <div class="reader-topbar">
         <button id="back-btn" class="icon-btn" title="Voltar à biblioteca">←</button>
+        <div class="toc-wrapper">
+            <button id="toc-btn" class="icon-btn" title="Capítulos" hidden>≡</button>
+            <div id="toc-dropdown" class="toc-dropdown" hidden>
+                <ul id="toc-list" class="toc-list"></ul>
+            </div>
+        </div>
         <span id="reader-title" class="reader-title"></span>
         <div class="mode-switch">
             <button id="mode-focus-btn" class="mode-btn active" data-mode="focus">Foco</button>

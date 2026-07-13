@@ -1,19 +1,31 @@
 import hashlib
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import get_current_user
 from app.database import get_connection
-from app.schemas import DocumentCreate, DocumentDetail, DocumentRename, DocumentSummary
+from app.schemas import DocumentCreate, DocumentDetail, DocumentSummary, DocumentUpdate
 
 router = APIRouter()
+
+
+def _row_to_detail(row) -> dict:
+    """`toc` is stored as JSON text in the column — parse it back into a
+    list before Pydantic validates against `DocumentDetail.toc`. Used by
+    every endpoint here and by import_routes.py (uploads/URL import)."""
+    d = dict(row)
+    if d.get("toc"):
+        d["toc"] = json.loads(d["toc"])
+    return d
 
 # A pasted/uploaded blob beyond this is almost certainly a mistake (or, once
 # Fase 6 lands, a scanned-PDF-sized outlier) — reject with a clear message
 # instead of silently loading a multi-megabyte string into the browser.
 MAX_TEXT_CHARS = 500_000
 MAX_TITLE_CHARS = 200
+MAX_COLLECTION_CHARS = 100
 
 
 def _hash_text(text: str) -> str:
@@ -89,7 +101,7 @@ def create_document(payload: DocumentCreate, user: dict = Depends(get_current_us
             (content_hash, user["id"]),
         ).fetchone()
         if existing:
-            return dict(existing)
+            return _row_to_detail(existing)
 
         title = _unique_title(conn, title, user["id"])
         cur = conn.execute(
@@ -104,27 +116,36 @@ def create_document(payload: DocumentCreate, user: dict = Depends(get_current_us
         ).fetchone()
     finally:
         conn.close()
-    return dict(row)
+    return _row_to_detail(row)
 
 
 @router.get("/documents", response_model=list[DocumentSummary])
-def list_documents(user: dict = Depends(get_current_user)):
+def list_documents(q: str | None = None, user: dict = Depends(get_current_user)):
+    query = """
+        SELECT d.id, d.title, d.format, d.source_type, d.word_count,
+               d.visibility, d.owner_id, d.collection, d.created_at,
+               rp.position AS progress_position,
+               rp.status   AS progress_status
+        FROM documents d
+        LEFT JOIN reading_progress rp
+               ON rp.document_id = d.id AND rp.user_id = ?
+        WHERE (d.visibility = 'house' OR d.owner_id = ?)
+    """
+    params: list = [user["id"], user["id"]]
+    if q:
+        # Content search has to happen server-side — the summary sent to the
+        # frontend never includes raw_text. Escape LIKE wildcards in the
+        # user's own query so a literal "%"/"_" in the search term doesn't
+        # act as one.
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        query += " AND (d.title LIKE ? ESCAPE '\\' OR d.raw_text LIKE ? ESCAPE '\\')"
+        params += [pattern, pattern]
+    query += " ORDER BY d.created_at DESC"
+
     conn = get_connection()
     try:
-        rows = conn.execute(
-            """
-            SELECT d.id, d.title, d.format, d.source_type, d.word_count,
-                   d.visibility, d.owner_id, d.created_at,
-                   rp.position AS progress_position,
-                   rp.status   AS progress_status
-            FROM documents d
-            LEFT JOIN reading_progress rp
-                   ON rp.document_id = d.id AND rp.user_id = ?
-            WHERE d.visibility = 'house' OR d.owner_id = ?
-            ORDER BY d.created_at DESC
-            """,
-            (user["id"], user["id"]),
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
     finally:
         conn.close()
     return [dict(row) for row in rows]
@@ -139,15 +160,11 @@ def get_document(document_id: int, user: dict = Depends(get_current_user)):
         conn.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return dict(row)
+    return _row_to_detail(row)
 
 
 @router.patch("/documents/{document_id}", response_model=DocumentDetail)
-def rename_document(document_id: int, payload: DocumentRename, user: dict = Depends(get_current_user)):
-    title = payload.title.strip()[:MAX_TITLE_CHARS]
-    if not title:
-        raise HTTPException(status_code=400, detail="title must not be empty")
-
+def update_document(document_id: int, payload: DocumentUpdate, user: dict = Depends(get_current_user)):
     conn = get_connection()
     try:
         existing = _get_visible_document(conn, document_id, user)
@@ -156,17 +173,28 @@ def rename_document(document_id: int, payload: DocumentRename, user: dict = Depe
         if not _can_manage(existing, user):
             raise HTTPException(status_code=403, detail="Você não tem permissão para editar este documento.")
 
-        title = _unique_title(conn, title, existing["owner_id"], exclude_id=document_id)
-        conn.execute(
-            "UPDATE documents SET title = ? WHERE id = ?", (title, document_id)
-        )
-        conn.commit()
+        updates: dict = {}
+        if payload.title is not None:
+            title = payload.title.strip()[:MAX_TITLE_CHARS]
+            if not title:
+                raise HTTPException(status_code=400, detail="title must not be empty")
+            updates["title"] = _unique_title(conn, title, existing["owner_id"], exclude_id=document_id)
+        if payload.collection is not None:
+            updates["collection"] = payload.collection.strip()[:MAX_COLLECTION_CHARS]
+
+        if updates:
+            set_clause = ", ".join(f"{key} = ?" for key in updates)
+            conn.execute(
+                f"UPDATE documents SET {set_clause} WHERE id = ?",
+                [*updates.values(), document_id],
+            )
+            conn.commit()
         row = conn.execute(
             "SELECT * FROM documents WHERE id = ?", (document_id,)
         ).fetchone()
     finally:
         conn.close()
-    return dict(row)
+    return _row_to_detail(row)
 
 
 @router.delete("/documents/{document_id}", status_code=204)

@@ -74,6 +74,8 @@ MIGRATIONS = [
     ("lang", "ALTER TABLE documents ADD COLUMN lang TEXT"),
     ("owner_id", "ALTER TABLE documents ADD COLUMN owner_id INTEGER"),
     ("visibility", "ALTER TABLE documents ADD COLUMN visibility TEXT NOT NULL DEFAULT 'house'"),
+    ("toc", "ALTER TABLE documents ADD COLUMN toc TEXT"),
+    ("collection", "ALTER TABLE documents ADD COLUMN collection TEXT NOT NULL DEFAULT ''"),
 ]
 
 
