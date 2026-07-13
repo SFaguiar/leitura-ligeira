@@ -76,6 +76,38 @@ body {
     margin: 1rem 0;
 }
 
+.library-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.library-search {
+    flex: 1;
+    min-width: 0;
+    background: var(--card-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.9rem;
+}
+
+.library-collection-filter {
+    background: var(--card-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.4rem;
+    font-size: 0.85rem;
+    max-width: 40%;
+}
+
+.shelf-tabs {
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
 .btn {
     border: 1px solid var(--border);
     background: var(--card-bg);
@@ -171,27 +203,6 @@ body {
     padding: 0.3rem 0.4rem;
     font-size: 0.8rem;
     max-width: 8.5rem;
-}
-
-/* Recolhida por padrão (nativo do <details>) — evita clique acidental num
-   documento já descartado; abrir cada item mostra o modal de confirmação. */
-.abandoned-section {
-    margin-top: 1.5rem;
-    border-top: 1px solid var(--border);
-    padding-top: 0.8rem;
-}
-
-.abandoned-section summary {
-    cursor: pointer;
-    color: var(--muted);
-    font-size: 0.9rem;
-    font-weight: 600;
-    padding: 0.4rem 0;
-}
-
-.abandoned-section .document-list {
-    margin-top: 0.8rem;
-    opacity: 0.75;
 }
 
 .profile-list {
@@ -308,6 +319,43 @@ body {
     align-items: center;
     gap: 0.8rem;
     margin-bottom: 1rem;
+}
+
+.toc-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.toc-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 0.3rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    min-width: 220px;
+    max-height: 60vh;
+    overflow-y: auto;
+    z-index: 5;
+}
+
+.toc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.4rem 0;
+}
+
+.toc-list li {
+    padding: 0.5rem 0.9rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.toc-list li:hover,
+.toc-list li:active {
+    background: var(--border);
 }
 
 .reader-title {
@@ -505,6 +553,7 @@ body {
 }
 
 .flow-content {
+    position: relative; /* offsetParent for paragraphs — lazy spanify reads offsetTop against scrollTop */
     height: 45vh;
     overflow-y: auto;
     padding: 1rem 1.25rem 4rem;

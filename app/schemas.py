@@ -7,8 +7,9 @@ class DocumentCreate(BaseModel):
     visibility: str = "house"
 
 
-class DocumentRename(BaseModel):
-    title: str
+class DocumentUpdate(BaseModel):
+    title: str | None = None
+    collection: str | None = None
 
 
 class DocumentSummary(BaseModel):
@@ -19,13 +20,26 @@ class DocumentSummary(BaseModel):
     word_count: int
     visibility: str
     owner_id: int | None
+    collection: str
     created_at: str
     progress_position: int | None = None
     progress_status: str | None = None
 
 
+class TocEntry(BaseModel):
+    title: str
+    token_index: int
+
+
 class DocumentDetail(DocumentSummary):
     raw_text: str
+    toc: list[TocEntry] | None = None
+
+
+class UrlImportRequest(BaseModel):
+    url: str
+    title: str = ""
+    visibility: str = "house"
 
 
 class UserCreate(BaseModel):
