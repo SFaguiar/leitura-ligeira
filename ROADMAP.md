@@ -72,25 +72,29 @@ O que funciona hoje, testado em uso real:
 ### Alvo (com o pivô multiusuário)
 
 - **Identidade com senha real (2026-07-12, decidido):** login de verdade,
-  não mais um seletor sem senha. Senha hasheada no servidor (`passlib`/
-  `bcrypt`), **sem exigência de complexidade obrigatória** — é ambiente
-  doméstico, cada um escolhe a própria senha, simples se quiser. Login emite
-  um cookie de sessão (simples, servidor mantém a sessão ou assina o cookie —
-  não é OAuth/JWT, não precisa dessa complexidade aqui); requisições
-  seguintes carregam o cookie em vez de reenviar a senha. **Tensão aceita por
-  ora:** a senha ainda trafega em HTTP puro até a Fase 11 (HTTPS) — aceitável
-  numa LAN de confiança doméstica, mas revisitar (ou adiantar a Fase 11) se a
-  rede deixar de ser só isso.
+  não um seletor sem senha. Escolhas concretas fechadas na 7ª rodada:
+  hash com **`hashlib.pbkdf2_hmac` da stdlib** (zero dependência nova,
+  adequado pra LAN de confiança; `bcrypt`/`argon2` são troca de 1 linha se um
+  dia precisar), **sem exigência de complexidade** de senha. Sessão via
+  **cookie assinado** (`SessionMiddleware` do Starlette — sem tabela de
+  sessão, sobrevive a restart se a chave persistir); chave secreta gerada uma
+  vez em `data/secret_key` (gitignored); cookie longevo (semanas) pro celular.
+  **Auto-registro aberto na LAN** (qualquer um cria o próprio perfil; o
+  primeiro vira admin). **Tela de login = seletor de perfil + senha
+  (estilo Netflix).** **Tensão aceita:** a senha trafega em HTTP puro até a
+  Fase 11 (HTTPS) — ok numa LAN de confiança doméstica; revisitar se a rede
+  deixar de ser só isso.
 - **Papéis:** `users.role` (`admin` | `member`). O primeiro perfil criado no
   sistema vira `admin` automaticamente (convenção comum de bootstrap em apps
   self-hosted — proposta do agente, sem objeção esperada). Admin tem direitos
   sobre a **biblioteca da casa**; documentos **privados** continuam
   exclusivos do dono, admin não anula privacidade.
 - **Permissões sobre documentos (2026-07-12, decidido):** quem
-  renomeia/exclui um documento é (a) quem subiu (`owner_id`), (b) qualquer
-  pessoa explicitamente autorizada naquele documento (`document_permissions`
-  — concessão granular, não é tudo-ou-nada), ou (c) o admin global (só para
-  documentos `house`). Substitui o modelo antigo "qualquer um exclui" e o
+  renomeia/exclui um documento é (a) quem subiu (`owner_id`), (b) *[adiado —
+  ver 7ª rodada]* qualquer pessoa explicitamente autorizada naquele documento
+  (`document_permissions` — concessão granular, não é tudo-ou-nada), ou (c) o
+  admin global (só para documentos `house`). Substitui o modelo antigo
+  "qualquer um exclui" e o
   "só o dono" — era um dos dois extremos, ficou o meio-termo com concessão.
 - **Configurações por conta, sincronizadas pelo servidor** — seguem a pessoa
   entre celular/PC, **incluindo o tema** (claro/escuro é por conta, não por
@@ -133,10 +137,12 @@ documents:
   raw_text, content_hash, word_count, lang,
   owner_id (FK users, nullable p/ legado), visibility ('house'|'private'),
   created_at
+  -- dedupe por content_hash passa a ser escopado ao owner (ver 7ª rodada):
+  --   nunca colapsar/retornar documento de outra pessoa (vazamento de privado)
 
-document_permissions:          -- concessão granular além do dono/admin
-  document_id, user_id (PK composta)
-  -- presença da linha = pode renomear/excluir esse documento
+document_permissions:          -- ADIADO (7ª rodada) — não entra na Fase 4
+  document_id, user_id (PK composta)   -- concessão granular além do dono/admin
+  -- construir só quando houver demanda real; dono + admin cobrem o início
 
 reading_progress:             -- funcional: continuar de onde parou + prateleira
   user_id, document_id, position,
@@ -165,9 +171,9 @@ POST       /documents                    # paste (depois upload/URL); aceita vis
 GET        /documents                    # biblioteca (casa + privados do usuário atual),
                                           # inclui status de leitura do usuário atual
 GET        /documents/{id}
-PATCH      /documents/{id}               # renomear — exige dono/permissão/admin
-DELETE     /documents/{id}               # excluir — exige dono/permissão/admin
-POST       /documents/{id}/permissions   # dono/admin concede acesso a outro usuário
+PATCH      /documents/{id}               # renomear — exige dono/admin (Fase 4)
+DELETE     /documents/{id}               # excluir — exige dono/admin (Fase 4)
+POST       /documents/{id}/permissions   # [ADIADO] concessão granular — fase futura
 GET/PUT    /documents/{id}/progress      # posição + status do usuário atual
 POST       /sessions                     # abrir sessão de leitura
 PATCH      /sessions/{id}                # heartbeat / fechar
@@ -277,6 +283,29 @@ GET        /documents/{id}/audio/{voice} # stream do áudio
   (anti-over-engineering); os dois toggles do painel viram
   `nav_snap_back_on_click` (clicar palavra no Fluxo volta pro Foco) e
   `nav_pause_on_switch`.
+
+**2026-07-12 — deliberação profunda da Fase 4 (7ª rodada)**
+- **Dois bugs latentes achados no código atual, que o pivô multiusuário
+  transforma em reais** (corrigir na Fase 4): (a) o dedupe por `content_hash`
+  é global → colar texto que outra pessoa salvou como **privado** devolveria
+  o documento dela (vazamento) → escopar o dedupe ao próprio dono; (b) a
+  unicidade de título é global → duas pessoas não teriam "Capítulo 1" sem
+  sufixo esquisito → escopar ao dono (ou largar).
+- **Decisões do usuário:** HTTP puro aceito por ora (HTTPS fica na Fase 11);
+  **auto-registro aberto** na LAN (1º usuário vira admin); tela de login =
+  **seletor de perfil + senha (estilo Netflix)**; **`document_permissions`
+  adiado** (Fase 4 sai só com dono + admin — YAGNI, menos superfície).
+- **Decisões de engenharia do agente (LEAN):** hash `pbkdf2_hmac` da stdlib
+  (zero dep); sessão por cookie assinado (`SessionMiddleware`), chave em
+  `data/secret_key`, cookie longevo; **módulo de settings continua síncrono**
+  — carrega tudo no login pra um cache em memória (+ localStorage espelho),
+  `getSetting` lê do cache, `setSetting` grava local na hora e faz PUT com
+  debounce (não espalha `async`); migração: docs legados (`owner_id NULL`)
+  viram `house` do 1º admin, settings do localStorage migram best-effort pra
+  1ª conta naquele navegador. **Fora do escopo (YAGNI, limitações aceitas):**
+  painel de admin, reset de senha por UI, rate-limiting/lockout de login.
+- **Settings-ao-servidor fica junto** na Fase 4 (não adiado) — foi o motivo
+  de termos construído o módulo único na Fase 3.
 
 ---
 
@@ -388,25 +417,44 @@ persistência confirmada após reload completo. Nenhum código commitado ainda
 
 #### [ ] Fase 4 — Contas da casa (multiusuário leve, com senha)
 *Depende de: Fase 3 (módulo de settings). Desbloqueia: Fases 5, 6 (privado),
-9 (stats individuais).*
-- Tabela `users` com `password_hash` (hasheada, sem exigência de
-  complexidade) e `role` (`admin`/`member`); primeiro perfil criado vira
-  admin automaticamente.
-- Tela de login (criar perfil + senha / entrar); `POST /login` verifica e
-  emite cookie de sessão simples — nada de OAuth/JWT, essa complexidade não
-  se justifica aqui. Requisições seguintes carregam o cookie.
-- `user_settings` no servidor; o módulo de settings do cliente passa a
-  sincronizar com a conta (inclui tema, confirmado por conta); settings
-  atuais do localStorage migram para o primeiro perfil criado.
-- `documents.owner_id` + `visibility` (`house` default | `private`); o modal
-  de paste ganha a opção "privado". Biblioteca lista casa + privados do
-  usuário ativo.
-- **Permissões:** renomear/excluir exige dono, OU permissão concedida
-  (`document_permissions` — dono ou admin concede a outra pessoa), OU papel
-  admin (só para documentos `house`; privados seguem exclusivos do dono,
-  admin não anula privacidade).
-- Limitação aceita: senha trafega em HTTP puro até a Fase 11 — ok numa LAN
-  de confiança doméstica, revisitar se isso mudar.
+9 (stats individuais). Plano fechado na 7ª rodada de deliberação.*
+
+**Auth e sessão:**
+- Tabela `users` (`id, name` único, `password_hash`, `role`, `created_at`);
+  hash com `hashlib.pbkdf2_hmac` (salt por usuário; sem dependência nova);
+  sem exigência de complexidade de senha.
+- **Auto-registro aberto:** a tela de login lista os perfis existentes
+  (estilo Netflix) + opção "novo perfil"; toca no seu, digita a senha. O
+  **primeiro perfil criado vira `admin`** automaticamente.
+- `POST /login` (verifica senha) e `POST /logout`; sessão via
+  `SessionMiddleware` do Starlette (cookie assinado, longevo). Chave secreta
+  gerada uma vez em `data/secret_key` (gitignored). Dependência `current_user`
+  do FastAPI em todos os endpoints; **401 → frontend redireciona pro login**
+  (um handler global de fetch).
+- Afordância visível de trocar de perfil / sair.
+
+**Biblioteca multiusuário:**
+- `documents.owner_id` + `visibility` (`house` default | `private`); modal de
+  paste ganha a opção "privado". `GET /documents` = casa + privados do usuário
+  atual.
+- **Corrigir os dois bugs latentes (ver 7ª rodada):** dedupe por
+  `content_hash` escopado ao dono (nunca retornar documento de outra pessoa);
+  unicidade de título escopada ao dono.
+- **Permissões (versão enxuta):** renomear/excluir exige **dono** OU **admin**
+  (admin só em docs `house`; privados seguem exclusivos do dono). A concessão
+  granular (`document_permissions`) fica **adiada** até ter demanda real.
+- Migração: docs legados (`owner_id NULL`) viram `house` do 1º admin.
+
+**Settings por conta:**
+- `user_settings` no servidor (`GET/PUT /users/{id}/settings`, inclui tema).
+- O módulo de settings da Fase 3 **continua síncrono**: no login carrega tudo
+  num cache em memória (+ localStorage como espelho offline); `getSetting` lê
+  do cache; `setSetting` grava local na hora e faz PUT com debounce. Settings
+  atuais do localStorage migram best-effort pra 1ª conta criada no navegador.
+
+**Fora do escopo (YAGNI — limitações aceitas, documentadas):** painel de
+admin, reset de senha por UI (admin recria/redefine no banco se preciso),
+rate-limiting/lockout de login. Senha em HTTP puro até a Fase 11.
 
 #### [ ] Fase 5 — Progresso, prateleiras e sessões por usuário
 *Depende de: Fase 4 (user_id). Desbloqueia: Fase 7 (busca por prateleira),
@@ -499,11 +547,15 @@ estável.*
 ## Limitações aceitas (não resolver a menos que seja pedido)
 
 - **Senha sem exigência de complexidade obrigatória** — ambiente doméstico,
-  cada um escolhe a própria senha. Ainda é hasheada e verificada de verdade
-  (não é mais "sem segurança real").
+  cada um escolhe a própria senha. Ainda é hasheada (pbkdf2) e verificada de
+  verdade (não é "sem segurança real").
 - **Senha trafega em HTTP puro até a Fase 11** (HTTPS local) — aceitável numa
   LAN de confiança doméstica; revisitar (ou adiantar a Fase 11) se a rede
   deixar de ser só isso.
+- **Sem rate-limiting/lockout no login e sem reset de senha por UI** — home,
+  confiança, baixo risco. Esqueceu a senha? O admin redefine direto no banco.
+- **Auto-registro aberto na LAN** — qualquer um na Wi-Fi cria um perfil; é
+  confiança doméstica por design, não controle de acesso real.
 - PDFs de duas colunas ou com muitas notas de rodapé podem extrair em ordem
   bagunçada; documentos escaneados (sem texto) ficam de fora — sem OCR.
 - Sites com paywall, JS pesado ou anti-bot falham na extração de URL, sem
