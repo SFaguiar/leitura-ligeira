@@ -9,16 +9,70 @@
 <body>
 <header class="topbar">
     <h1 class="brand">Leitura Ligeira</h1>
-    <button id="theme-toggle" class="icon-btn" title="Alternar tema">🌙</button>
+    <div class="topbar-actions">
+        <span id="current-user-name" class="current-user-name" hidden></span>
+        <button id="logout-btn" class="btn" title="Sair" hidden>Sair</button>
+        <button id="theme-toggle" class="icon-btn" title="Alternar tema">🌙</button>
+    </div>
 </header>
 
-<main id="library-view" class="view">
+<main id="login-view" class="view">
+    <h2>Quem está lendo?</h2>
+    <ul id="profile-list" class="profile-list"></ul>
+    <button id="new-profile-btn" class="btn btn-primary">+ Novo perfil</button>
+</main>
+
+<div id="login-modal" class="modal" hidden>
+    <div class="modal-card">
+        <h2 id="login-modal-name">Entrar</h2>
+        <label for="login-password">Senha</label>
+        <input id="login-password" type="password" placeholder="Sua senha" />
+        <p id="login-error" class="error-text" hidden></p>
+        <div class="modal-actions">
+            <button id="login-cancel-btn" class="btn">Cancelar</button>
+            <button id="login-submit-btn" class="btn btn-primary">Entrar</button>
+        </div>
+    </div>
+</div>
+
+<div id="new-profile-modal" class="modal" hidden>
+    <div class="modal-card">
+        <h2>Novo perfil</h2>
+        <label for="new-profile-name">Nome</label>
+        <input id="new-profile-name" type="text" placeholder="Seu nome" />
+        <label for="new-profile-password">Senha</label>
+        <input id="new-profile-password" type="password" placeholder="Escolha uma senha" />
+        <p id="new-profile-error" class="error-text" hidden></p>
+        <div class="modal-actions">
+            <button id="new-profile-cancel-btn" class="btn">Cancelar</button>
+            <button id="new-profile-submit-btn" class="btn btn-primary">Criar perfil</button>
+        </div>
+    </div>
+</div>
+
+<main id="library-view" class="view" hidden>
     <div class="library-actions">
         <button id="new-doc-btn" class="btn btn-primary">+ Novo texto</button>
     </div>
     <ul id="document-list" class="document-list"></ul>
     <p id="library-empty" class="empty-hint" hidden>Nenhum texto ainda. Cole um texto para começar.</p>
+    <details id="abandoned-section" class="abandoned-section" hidden>
+        <summary id="abandoned-summary">Abandonados</summary>
+        <ul id="abandoned-list" class="document-list"></ul>
+    </details>
 </main>
+
+<div id="abandoned-modal" class="modal" hidden>
+    <div class="modal-card">
+        <h2>Retomar este documento?</h2>
+        <p id="abandoned-modal-title" class="modal-subtitle"></p>
+        <div class="modal-actions modal-actions-stack">
+            <button id="abandoned-resume-btn" class="btn btn-primary">Continuar lendo</button>
+            <button id="abandoned-wishlist-btn" class="btn">Quero ler</button>
+            <button id="abandoned-keep-btn" class="btn">Manter abandonado (só explorar)</button>
+        </div>
+    </div>
+</div>
 
 <div id="new-doc-modal" class="modal" hidden>
     <div class="modal-card">
@@ -27,6 +81,10 @@
         <input id="doc-title" type="text" placeholder="Ex: Artigo sobre X" />
         <label for="doc-text">Texto</label>
         <textarea id="doc-text" rows="10" placeholder="Cole o texto aqui..."></textarea>
+        <label class="checkbox-row">
+            <input id="doc-private" type="checkbox" />
+            Documento privado (só eu vejo)
+        </label>
         <div class="modal-actions">
             <button id="cancel-doc-btn" class="btn">Cancelar</button>
             <button id="save-doc-btn" class="btn btn-primary">Salvar e ler</button>

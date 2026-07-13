@@ -46,6 +46,39 @@ const navPauseSwitchToggle = document.getElementById("nav-pause-switch-toggle");
 
 const themeToggle = document.getElementById("theme-toggle");
 
+const currentUserName = document.getElementById("current-user-name");
+const logoutBtn = document.getElementById("logout-btn");
+
+const loginView = document.getElementById("login-view");
+const profileList = document.getElementById("profile-list");
+const newProfileBtn = document.getElementById("new-profile-btn");
+
+const loginModal = document.getElementById("login-modal");
+const loginModalName = document.getElementById("login-modal-name");
+const loginPasswordInput = document.getElementById("login-password");
+const loginError = document.getElementById("login-error");
+const loginCancelBtn = document.getElementById("login-cancel-btn");
+const loginSubmitBtn = document.getElementById("login-submit-btn");
+
+const newProfileModal = document.getElementById("new-profile-modal");
+const newProfileNameInput = document.getElementById("new-profile-name");
+const newProfilePasswordInput = document.getElementById("new-profile-password");
+const newProfileError = document.getElementById("new-profile-error");
+const newProfileCancelBtn = document.getElementById("new-profile-cancel-btn");
+const newProfileSubmitBtn = document.getElementById("new-profile-submit-btn");
+
+const docPrivateInput = document.getElementById("doc-private");
+
+const abandonedSection = document.getElementById("abandoned-section");
+const abandonedSummary = document.getElementById("abandoned-summary");
+const abandonedList = document.getElementById("abandoned-list");
+
+const abandonedModal = document.getElementById("abandoned-modal");
+const abandonedModalTitle = document.getElementById("abandoned-modal-title");
+const abandonedResumeBtn = document.getElementById("abandoned-resume-btn");
+const abandonedWishlistBtn = document.getElementById("abandoned-wishlist-btn");
+const abandonedKeepBtn = document.getElementById("abandoned-keep-btn");
+
 // ---- Settings module (single source of truth) ----
 // Everything the reader remembers goes through get/set here, under one
 // naming convention. Fase 4 (contas) redirects this module to the server —
@@ -77,6 +110,23 @@ const SETTINGS_DEFAULTS = {
     navSnapBackOnClick: false,
     navPauseOnSwitch: false,
 };
+// Maps a local settings key to its column name on the server. Fase 4 syncs
+// every write here (debounced) so a second device/profile picks it up —
+// localStorage stays the instant-read cache, the server is the account's
+// source of truth.
+const SETTINGS_SERVER_KEYS = {
+    theme: "theme",
+    activeMode: "active_mode",
+    wpmFocus: "wpm_focus",
+    wpmFlow: "wpm_flow",
+    chunkFocus: "chunk_focus",
+    chunkFlow: "chunk_flow",
+    fontFocus: "font_focus",
+    fontFlow: "font_flow",
+    orpEnabled: "orp_enabled",
+    navSnapBackOnClick: "nav_snap_back_on_click",
+    navPauseOnSwitch: "nav_pause_on_switch",
+};
 
 function getSetting(key) {
     const raw = localStorage.getItem(SETTINGS_PREFIX + key);
@@ -94,6 +144,52 @@ function getSetting(key) {
 
 function setSetting(key, value) {
     localStorage.setItem(SETTINGS_PREFIX + key, typeof value === "boolean" ? (value ? "1" : "0") : String(value));
+    const serverKey = SETTINGS_SERVER_KEYS[key];
+    if (serverKey && currentUser) {
+        settingsSyncQueue[serverKey] = value;
+        clearTimeout(settingsSyncTimer);
+        settingsSyncTimer = setTimeout(flushSettingsSync, 600);
+    }
+}
+
+// Declared here (ahead of the Auth section below) because applyTheme() at
+// module load calls setSetting() synchronously, which reads currentUser —
+// that reference would otherwise land in the temporal dead zone.
+let currentUser = null;
+let settingsSyncQueue = {};
+let settingsSyncTimer = null;
+
+async function flushSettingsSync() {
+    if (!currentUser) return;
+    const body = settingsSyncQueue;
+    settingsSyncQueue = {};
+    if (Object.keys(body).length === 0) return;
+    try {
+        await fetch("/me/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+    } catch {
+        // Best-effort — localStorage already has the value; the next change
+        // (or next login's applyServerSettings) reconciles it.
+    }
+}
+
+// Mirrors settings fetched from the server into the local cache without
+// re-queuing a sync — this data just came *from* the server.
+function applyServerSettings(s) {
+    localStorage.setItem(SETTINGS_PREFIX + "theme", s.theme);
+    localStorage.setItem(SETTINGS_PREFIX + "activeMode", s.active_mode);
+    localStorage.setItem(SETTINGS_PREFIX + "wpmFocus", String(s.wpm_focus));
+    localStorage.setItem(SETTINGS_PREFIX + "wpmFlow", String(s.wpm_flow));
+    localStorage.setItem(SETTINGS_PREFIX + "chunkFocus", String(s.chunk_focus));
+    localStorage.setItem(SETTINGS_PREFIX + "chunkFlow", String(s.chunk_flow));
+    localStorage.setItem(SETTINGS_PREFIX + "fontFocus", String(s.font_focus));
+    localStorage.setItem(SETTINGS_PREFIX + "fontFlow", String(s.font_flow));
+    localStorage.setItem(SETTINGS_PREFIX + "orpEnabled", s.orp_enabled ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "navSnapBackOnClick", s.nav_snap_back_on_click ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "navPauseOnSwitch", s.nav_pause_on_switch ? "1" : "0");
 }
 
 function modeKey(base) {
@@ -111,6 +207,196 @@ themeToggle.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme");
     applyTheme(current === "dark" ? "light" : "dark");
 });
+
+// ---- Auth ----
+// Auto-registro aberto, estilo Netflix: a tela de login lista os perfis
+// existentes; o primeiro perfil criado no app inteiro vira admin (decidido
+// no backend). Sessão via cookie assinado (SessionMiddleware) — apiFetch()
+// é o único lugar que reage a uma sessão expirada/inválida. (currentUser is
+// declared earlier, in the Settings module, to avoid a TDZ hit — see there.)
+
+async function apiFetch(url, options) {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+        currentUser = null;
+        showLogin();
+    }
+    return res;
+}
+
+async function apiErrorMessage(res, fallback) {
+    try {
+        const body = await res.json();
+        return body.detail || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function showLogin() {
+    readerView.hidden = true;
+    libraryView.hidden = true;
+    loginView.hidden = false;
+    currentUserName.hidden = true;
+    logoutBtn.hidden = true;
+    loadProfileList();
+}
+
+async function loadProfileList() {
+    const res = await fetch("/users");
+    const users = res.ok ? await res.json() : [];
+    profileList.innerHTML = "";
+    users.forEach((u) => {
+        const li = document.createElement("li");
+        li.textContent = u.name;
+        li.addEventListener("click", () => openLoginModal(u.name));
+        profileList.appendChild(li);
+    });
+}
+
+async function afterLogin() {
+    currentUserName.textContent = currentUser.name;
+    currentUserName.hidden = false;
+    logoutBtn.hidden = false;
+    loginView.hidden = true;
+    try {
+        const res = await fetch("/me/settings");
+        if (res.ok) {
+            applyServerSettings(await res.json());
+        }
+    } catch {
+        // Offline mirror already has whatever was there before — carry on.
+    }
+    applyTheme(getSetting("theme"));
+    initFromLocation();
+}
+
+function canManage(doc) {
+    if (!currentUser) return false;
+    if (doc.owner_id === currentUser.id) return true;
+    if (currentUser.role === "admin" && doc.visibility === "house") return true;
+    return false;
+}
+
+let loginTargetName = null;
+
+function openLoginModal(name) {
+    loginTargetName = name;
+    loginModalName.textContent = name;
+    loginPasswordInput.value = "";
+    loginError.hidden = true;
+    loginModal.hidden = false;
+    loginPasswordInput.focus();
+}
+function closeLoginModal() {
+    loginModal.hidden = true;
+}
+loginCancelBtn.addEventListener("click", closeLoginModal);
+loginModal.addEventListener("click", (e) => {
+    if (e.target === loginModal) closeLoginModal();
+});
+loginPasswordInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        loginSubmitBtn.click();
+    }
+});
+loginSubmitBtn.addEventListener("click", async () => {
+    const password = loginPasswordInput.value;
+    if (!password) {
+        loginError.textContent = "Digite a senha.";
+        loginError.hidden = false;
+        return;
+    }
+    const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: loginTargetName, password }),
+    });
+    if (!res.ok) {
+        loginError.textContent = await apiErrorMessage(res, "Nome ou senha incorretos.");
+        loginError.hidden = false;
+        return;
+    }
+    currentUser = await res.json();
+    closeLoginModal();
+    await afterLogin();
+});
+
+function openNewProfileModal() {
+    newProfileNameInput.value = "";
+    newProfilePasswordInput.value = "";
+    newProfileError.hidden = true;
+    newProfileModal.hidden = false;
+    newProfileNameInput.focus();
+}
+function closeNewProfileModal() {
+    newProfileModal.hidden = true;
+}
+newProfileBtn.addEventListener("click", openNewProfileModal);
+newProfileCancelBtn.addEventListener("click", closeNewProfileModal);
+newProfileModal.addEventListener("click", (e) => {
+    if (e.target === newProfileModal) closeNewProfileModal();
+});
+newProfileNameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        newProfilePasswordInput.focus();
+    }
+});
+newProfilePasswordInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        newProfileSubmitBtn.click();
+    }
+});
+newProfileSubmitBtn.addEventListener("click", async () => {
+    const name = newProfileNameInput.value.trim();
+    const password = newProfilePasswordInput.value;
+    if (!name) {
+        newProfileError.textContent = "Digite um nome.";
+        newProfileError.hidden = false;
+        return;
+    }
+    if (!password) {
+        newProfileError.textContent = "Escolha uma senha.";
+        newProfileError.hidden = false;
+        return;
+    }
+    const res = await fetch("/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, password }),
+    });
+    if (!res.ok) {
+        newProfileError.textContent = await apiErrorMessage(res, "Não foi possível criar o perfil.");
+        newProfileError.hidden = false;
+        return;
+    }
+    currentUser = await res.json();
+    closeNewProfileModal();
+    await afterLogin();
+});
+
+logoutBtn.addEventListener("click", async () => {
+    await fetch("/logout", { method: "POST" });
+    currentUser = null;
+    showLogin();
+});
+
+async function bootstrap() {
+    try {
+        const res = await fetch("/me");
+        if (res.ok) {
+            currentUser = await res.json();
+            await afterLogin();
+            return;
+        }
+    } catch {
+        // Network hiccup — fall through to the login screen either way.
+    }
+    showLogin();
+}
 
 // ---- Reading mode (Foco / Fluxo) ----
 // The motor (rsvp.js) has no concept of mode — it just advances a pointer
@@ -188,6 +474,12 @@ function releaseWakeLock() {
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && engine.playing && !wakeLock) {
         acquireWakeLock();
+    }
+    // Minimizar/trocar de app no celular não dispara pause explícito — este
+    // é o gatilho mais confiável em mobile (beforeunload é inconsistente,
+    // especialmente no iOS). Não fecha a sessão: só uma pausa, não o fim.
+    if (document.visibilityState === "hidden" && !readerView.hidden) {
+        saveProgress();
     }
 });
 
@@ -460,6 +752,10 @@ const engine = new RSVPEngine({
             fitDisplayText("Fim");
         }
         progressFill.style.width = "100%";
+        // Fim de documento é sinal inequívoco no RSVP — marca 'lido'
+        // automaticamente (reversível a qualquer momento na biblioteca).
+        saveProgress({ status: "lido" });
+        closeSession();
     },
 });
 
@@ -473,18 +769,26 @@ function refreshPlayButton() {
 }
 
 function doTogglePlay(btn) {
+    const wasPlaying = engine.playing;
     engine.toggle();
     refreshPlayButton();
+    if (!wasPlaying && engine.playing) {
+        openSessionIfNeeded();
+    } else if (wasPlaying && !engine.playing) {
+        saveProgress();
+    }
     if (btn) btn.blur();
 }
 function doRewind(btn) {
     engine.rewind();
     refreshPlayButton();
+    saveProgress();
     if (btn) btn.blur();
 }
 function doForward(btn) {
     engine.forward();
     refreshPlayButton();
+    saveProgress();
     if (btn) btn.blur();
 }
 
@@ -502,6 +806,7 @@ function switchMode(mode, { push = true } = {}) {
     if (navPauseOnSwitch && engine.playing) {
         engine.pause();
     }
+    saveProgress();
     activeMode = mode;
     setSetting("activeMode", mode);
     applyModeUI(mode);
@@ -546,9 +851,11 @@ scrubber.addEventListener("pointermove", (e) => {
 });
 scrubber.addEventListener("pointerup", () => {
     scrubbing = false;
+    saveProgress();
 });
 scrubber.addEventListener("pointercancel", () => {
     scrubbing = false;
+    saveProgress();
 });
 
 wpmSlider.addEventListener("input", () => {
@@ -593,12 +900,90 @@ document.addEventListener("keydown", (e) => {
     }
 });
 
+// ---- Progresso e sessões por usuário (Fase 5) ----
+// currentSessionId != null enquanto uma sessão está aberta para o documento
+// atual; nasce no primeiro play (não na abertura do documento) e é fechada
+// ao sair do leitor ou ao terminar. O heartbeat roda a cada ~30s mas só
+// efetivamente grava enquanto engine.playing — mantê-lo vivo mesmo pausado
+// evita o custo de start/stop a cada toggle, o no-op é barato.
+let currentSessionId = null;
+let heartbeatTimer = null;
+
+async function saveProgress(extraFields = {}) {
+    if (!currentDocId) return;
+    await apiFetch(`/documents/${currentDocId}/progress`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: engine.pointer, ...extraFields }),
+    });
+}
+
+function startHeartbeatIfNeeded() {
+    if (heartbeatTimer) return;
+    heartbeatTimer = setInterval(sendHeartbeat, 30_000);
+}
+
+async function sendHeartbeat() {
+    if (!currentSessionId || !engine.playing) return;
+    await apiFetch(`/sessions/${currentSessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ end_pointer: engine.pointer, position: engine.pointer }),
+    });
+}
+
+async function openSessionIfNeeded() {
+    if (currentSessionId !== null || !currentDocId) return;
+    const res = await apiFetch("/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document_id: currentDocId, mode: activeMode, start_pointer: engine.pointer }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    // session_id vem null quando collect_stats está desligado — opt-out
+    // respeitado no momento de gravar, não só de listar.
+    if (data.session_id != null) {
+        currentSessionId = data.session_id;
+        startHeartbeatIfNeeded();
+    }
+}
+
+async function closeSession() {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    if (!currentSessionId) return;
+    const sessionId = currentSessionId;
+    currentSessionId = null;
+    const wpm = Number(wpmSlider.value) || 300;
+    await apiFetch(`/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            end_pointer: engine.pointer,
+            position: engine.pointer,
+            ended_at: true,
+            avg_wpm: wpm,
+        }),
+    });
+}
+
+function resetSessionState() {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    currentSessionId = null;
+}
+
 // ---- Navigation ----
 // Real history entries (pushState) so the Android back gesture/button moves
 // reader → library instead of leaving the site, reloading inside the reader
 // (or following a #/read/{id}/{mode} link) opens straight to that document
 // and mode, and Fluxo→Foco→biblioteca pops one level at a time.
 function showLibrary(push = true) {
+    if (currentDocId) {
+        saveProgress();
+        closeSession();
+    }
     engine.pause();
     readerView.hidden = true;
     libraryView.hidden = false;
@@ -608,13 +993,21 @@ function showLibrary(push = true) {
 }
 
 async function showReader(id, push = true, mode = "focus") {
-    const res = await fetch(`/documents/${id}`);
+    // Trocar de documento direto (via popstate entre duas leituras, sem
+    // passar pela biblioteca) precisa fechar a sessão/salvar a posição do
+    // documento anterior antes de carregar o novo.
+    if (currentDocId && currentDocId !== id) {
+        saveProgress();
+        closeSession();
+    }
+    const res = await apiFetch(`/documents/${id}`);
     if (!res.ok) {
-        alert("Não foi possível carregar o documento.");
+        if (res.status !== 401) alert("Não foi possível carregar o documento.");
         return;
     }
     const doc = await res.json();
     currentDocId = id;
+    resetSessionState();
     readerTitle.textContent = doc.title;
     // Reveal the reader view — and the correct mode region — *before*
     // loading. engine.load() renders the first chunk synchronously via
@@ -643,6 +1036,19 @@ async function showReader(id, push = true, mode = "focus") {
     }
     refreshPlayButton();
     if (push) history.pushState({ view: "reader", id, mode }, "", `#/read/${id}/${mode}`);
+
+    // Restaura a posição depois do load() (que sempre reseta o ponteiro pra
+    // 0) — upsert lazy no servidor: cria a linha se não existir e promove
+    // 'quero_ler' -> 'lendo' automaticamente, sem sobrescrever 'lido'/'abandonado'.
+    const progressRes = await apiFetch(`/documents/${id}/progress`);
+    if (progressRes.ok) {
+        const progress = await progressRes.json();
+        // seekToIndex() já dispara _render() -> onChunk, que já sabe decidir
+        // entre Foco/Fluxo — nenhuma chamada extra de highlight necessária.
+        if (progress.position > 0) {
+            engine.seekToIndex(progress.position);
+        }
+    }
 }
 
 window.addEventListener("popstate", (e) => {
@@ -674,42 +1080,68 @@ function initFromLocation() {
 backBtn.addEventListener("click", () => history.back());
 
 // ---- Library ----
-async function apiErrorMessage(res, fallback) {
-    try {
-        const body = await res.json();
-        return body.detail || fallback;
-    } catch {
-        return fallback;
-    }
-}
-
 function estimatedMinutes(wordCount) {
     const wpm = getSetting("wpmFocus") || 300;
     return Math.max(1, Math.round(wordCount / wpm));
 }
 
-async function loadLibrary() {
-    const res = await fetch("/documents");
-    const docs = await res.json();
-    documentList.innerHTML = "";
-    libraryEmpty.hidden = docs.length > 0;
-    docs.forEach((doc) => {
-        const li = document.createElement("li");
-        li.innerHTML = `
-            <div class="doc-info">
-                <div class="doc-title"></div>
-                <div class="doc-meta"></div>
+// Estado null (nunca aberto) mostra "— sem status —": placeholder só visual,
+// nunca enviado via PUT — evita fingir que uma escolha já foi feita quando
+// não existe linha em reading_progress ainda.
+function buildDocListItem(doc) {
+    const manageable = canManage(doc);
+    const isAbandoned = doc.progress_status === "abandonado";
+    const pct = doc.word_count && doc.progress_position != null
+        ? Math.min(100, Math.round((doc.progress_position / doc.word_count) * 100))
+        : 0;
+
+    const li = document.createElement("li");
+    li.innerHTML = `
+        <div class="doc-info">
+            <div class="doc-title"></div>
+            <div class="doc-meta"></div>
+            <div class="doc-progress-bar" ${doc.progress_status ? "" : "hidden"}>
+                <div class="doc-progress-fill" style="width: ${pct}%"></div>
             </div>
-            <div class="doc-actions">
-                <button class="icon-btn rename-btn" title="Renomear">✏️</button>
-                <button class="icon-btn delete-btn" title="Excluir">🗑️</button>
-            </div>
-        `;
-        li.querySelector(".doc-title").textContent = doc.title;
-        li.querySelector(".doc-meta").textContent =
-            `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
-            `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}`;
-        li.querySelector(".doc-info").addEventListener("click", () => showReader(doc.id));
+        </div>
+        <div class="doc-actions">
+            <select class="status-select" title="Status de leitura">
+                ${doc.progress_status ? "" : '<option value="" selected disabled>— sem status —</option>'}
+                <option value="quero_ler" ${doc.progress_status === "quero_ler" ? "selected" : ""}>⭐ Quero ler</option>
+                <option value="lendo" ${doc.progress_status === "lendo" ? "selected" : ""}>🔖 Lendo</option>
+                <option value="lido" ${doc.progress_status === "lido" ? "selected" : ""}>✅ Lido</option>
+                <option value="abandonado" ${doc.progress_status === "abandonado" ? "selected" : ""}>🚫 Abandonado</option>
+            </select>
+            ${manageable ? '<button class="icon-btn rename-btn" title="Renomear">✏️</button><button class="icon-btn delete-btn" title="Excluir">🗑️</button>' : ""}
+        </div>
+    `;
+    li.querySelector(".doc-title").textContent = doc.title;
+    const privacyTag = doc.visibility === "private" ? " · 🔒 privado" : "";
+    li.querySelector(".doc-meta").textContent =
+        `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
+        `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}${privacyTag}`;
+
+    li.querySelector(".doc-info").addEventListener("click", () => {
+        if (isAbandoned) {
+            openAbandonedModal(doc);
+        } else {
+            showReader(doc.id);
+        }
+    });
+
+    li.querySelector(".status-select").addEventListener("change", async (e) => {
+        e.stopPropagation();
+        const newStatus = e.target.value;
+        if (!newStatus) return;
+        await apiFetch(`/documents/${doc.id}/progress`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus }),
+        });
+        loadLibrary();
+    });
+
+    if (manageable) {
         li.querySelector(".rename-btn").addEventListener("click", (e) => {
             e.stopPropagation();
             renameDocument(doc);
@@ -718,9 +1150,64 @@ async function loadLibrary() {
             e.stopPropagation();
             deleteDocument(doc);
         });
-        documentList.appendChild(li);
-    });
+    }
+    return li;
 }
+
+async function loadLibrary() {
+    const res = await apiFetch("/documents");
+    if (!res.ok) return;
+    const docs = await res.json();
+    documentList.innerHTML = "";
+    abandonedList.innerHTML = "";
+    libraryEmpty.hidden = docs.length > 0;
+
+    const activeDocs = docs.filter((d) => d.progress_status !== "abandonado");
+    const abandonedDocs = docs.filter((d) => d.progress_status === "abandonado");
+
+    activeDocs.forEach((doc) => documentList.appendChild(buildDocListItem(doc)));
+    abandonedDocs.forEach((doc) => abandonedList.appendChild(buildDocListItem(doc)));
+
+    abandonedSection.hidden = abandonedDocs.length === 0;
+    abandonedSummary.textContent = `Abandonados (${abandonedDocs.length})`;
+}
+
+// ---- Modal de confirmação para documentos abandonados ----
+// Recolhida por padrão (seção acima); clicar num item aqui não abre direto
+// no leitor — pergunta a intenção primeiro. Todas as três escolhas abrem o
+// leitor em seguida (o modal nunca bloqueia a exploração).
+let abandonedModalDoc = null;
+
+function openAbandonedModal(doc) {
+    abandonedModalDoc = doc;
+    abandonedModalTitle.textContent = doc.title;
+    abandonedModal.hidden = false;
+}
+function closeAbandonedModal() {
+    abandonedModal.hidden = true;
+    abandonedModalDoc = null;
+}
+abandonedModal.addEventListener("click", (e) => {
+    if (e.target === abandonedModal) closeAbandonedModal();
+});
+
+async function resolveAbandonedAndOpen(newStatus) {
+    const doc = abandonedModalDoc;
+    closeAbandonedModal();
+    if (!doc) return;
+    if (newStatus) {
+        await apiFetch(`/documents/${doc.id}/progress`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus }),
+        });
+    }
+    showReader(doc.id);
+}
+
+abandonedResumeBtn.addEventListener("click", () => resolveAbandonedAndOpen("lendo"));
+abandonedWishlistBtn.addEventListener("click", () => resolveAbandonedAndOpen("quero_ler"));
+abandonedKeepBtn.addEventListener("click", () => resolveAbandonedAndOpen(null));
 
 async function renameDocument(doc) {
     const newTitle = window.prompt("Novo título:", doc.title);
@@ -728,13 +1215,13 @@ async function renameDocument(doc) {
     const trimmed = newTitle.trim();
     if (!trimmed || trimmed === doc.title) return;
 
-    const res = await fetch(`/documents/${doc.id}`, {
+    const res = await apiFetch(`/documents/${doc.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: trimmed }),
     });
     if (!res.ok) {
-        alert(await apiErrorMessage(res, "Falha ao renomear o documento."));
+        if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao renomear o documento."));
         return;
     }
     loadLibrary();
@@ -744,9 +1231,9 @@ async function deleteDocument(doc) {
     if (!window.confirm(`Excluir "${doc.title}"? Essa ação não pode ser desfeita.`)) {
         return;
     }
-    const res = await fetch(`/documents/${doc.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/documents/${doc.id}`, { method: "DELETE" });
     if (!res.ok) {
-        alert(await apiErrorMessage(res, "Falha ao excluir o documento."));
+        if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao excluir o documento."));
         return;
     }
     loadLibrary();
@@ -756,6 +1243,7 @@ async function deleteDocument(doc) {
 function openModal() {
     docTitleInput.value = "";
     docTextInput.value = "";
+    docPrivateInput.checked = false;
     newDocModal.hidden = false;
     docTitleInput.focus();
 }
@@ -775,9 +1263,11 @@ docTitleInput.addEventListener("keydown", (e) => {
     }
 });
 document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !newDocModal.hidden) {
-        closeModal();
-    }
+    if (e.key !== "Escape") return;
+    if (!newDocModal.hidden) closeModal();
+    if (!loginModal.hidden) closeLoginModal();
+    if (!newProfileModal.hidden) closeNewProfileModal();
+    if (!abandonedModal.hidden) closeAbandonedModal();
 });
 
 saveDocBtn.addEventListener("click", async () => {
@@ -787,13 +1277,14 @@ saveDocBtn.addEventListener("click", async () => {
         return;
     }
     const title = docTitleInput.value.trim() || text.slice(0, 40);
-    const res = await fetch("/documents", {
+    const visibility = docPrivateInput.checked ? "private" : "house";
+    const res = await apiFetch("/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, raw_text: text }),
+        body: JSON.stringify({ title, raw_text: text, visibility }),
     });
     if (!res.ok) {
-        alert(await apiErrorMessage(res, "Falha ao salvar o documento."));
+        if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao salvar o documento."));
         return;
     }
     const doc = await res.json();
@@ -802,4 +1293,4 @@ saveDocBtn.addEventListener("click", async () => {
 });
 
 // ---- Init ----
-initFromLocation();
+bootstrap();
