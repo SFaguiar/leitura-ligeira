@@ -415,7 +415,7 @@ scrubber e auto-scroll/botão-de-retorno funcionando na nova estrutura;
 persistência confirmada após reload completo. Nenhum código commitado ainda
 — aguardando teste e autorização do usuário.
 
-#### [ ] Fase 4 — Contas da casa (multiusuário leve, com senha)
+#### [x] Fase 4 — Contas da casa (multiusuário leve, com senha) *(implementada 2026-07-12, aguardando teste do usuário)*
 *Depende de: Fase 3 (módulo de settings). Desbloqueia: Fases 5, 6 (privado),
 9 (stats individuais). Plano fechado na 7ª rodada de deliberação.*
 
@@ -455,6 +455,27 @@ persistência confirmada após reload completo. Nenhum código commitado ainda
 **Fora do escopo (YAGNI — limitações aceitas, documentadas):** painel de
 admin, reset de senha por UI (admin recria/redefine no banco se preciso),
 rate-limiting/lockout de login. Senha em HTTP puro até a Fase 11.
+
+**Implementado e testado ao vivo no navegador** (2026-07-12): backend
+verificado extensivamente via curl (registro/login/logout, cookie de sessão,
+bootstrap do 1º usuário como admin + backfill dos documentos legados,
+dedupe por `content_hash` e unicidade de título escopados ao dono — os dois
+bugs latentes confirmados corrigidos, incluindo o caso crítico de colar o
+mesmo texto de um documento privado alheio: cria documento novo, não
+vaza o conteúdo). Frontend testado end-to-end no browser: tela de login
+estilo Netflix com lista vazia → criação do 1º perfil (virou admin,
+documentos legados herdados) → biblioteca com botões renomear/excluir
+visíveis (dono); documento privado criado e confirmado só visível ao dono
+(`GET /documents/{id}` de outra conta retorna 404); segunda conta (`member`)
+confirmada sem botões de gerenciar nos documentos da casa alheios (403 ao
+tentar `PATCH` direto via API) e sem visibilidade do documento privado;
+settings sincronizadas ao servidor com debounce e confirmadas isoladas por
+conta (WPM alterado numa conta não vaza pra outra); logout e reautenticação
+por cookie após reload confirmados; sessão inválida em qualquer fetch
+autenticado confirmada redirecionando para a tela de login. Dados de teste
+(2ª conta e documento privado de teste) removidos após a validação — banco
+retorna ao estado real do usuário. Nenhum código commitado ainda —
+aguardando teste e autorização do usuário.
 
 #### [ ] Fase 5 — Progresso, prateleiras e sessões por usuário
 *Depende de: Fase 4 (user_id). Desbloqueia: Fase 7 (busca por prateleira),
@@ -542,6 +563,25 @@ estável.*
   (ícone+nome), mDNS via Avahi (`reader.local`) com fallback de IP estático
   documentado (mDNS no Android é inconsistente — testar nos aparelhos reais).
 
+#### [ ] Fase 13 — Administração de contas (self-service) — **NÃO PLANEJADA, precisa deliberação**
+*Depende de: uso real acumulado das Fases 4-9 (padrões de conta, permissão e
+conteúdo por usuário precisam existir de verdade antes de desenhar
+administração em cima deles — desenhar isso agora, sobre uma base ainda
+rudimentar de contas, arrisca retrabalho).*
+- Trocar a própria senha (usuário logado, sem precisar do admin).
+- Reset de senha assistido por outro caminho que não seja o admin mexendo
+  direto no banco (hoje é o comportamento documentado e aceito da Fase 4 —
+  ver "Limitações aceitas"; o script `scripts/reset_password.py` é o
+  mecanismo atual, uso administrativo local, fora da API/UI).
+- Possivelmente: painel de admin (hoje também fora de escopo), gestão de
+  perfis (renomear conta, remover conta e decidir o destino dos documentos
+  dela), talvez recuperação sem senha alguma (o vínculo é só o perfil em si,
+  já que não há e-mail cadastrado — precisa decidir se isso muda).
+- **Ainda não deliberado como fazer** — entra no backlog explicitamente sem
+  desenho fechado; delibera quando a base de contas parar de ser tão
+  rudimentar (mais gente usando de verdade, primeiros pedidos reais de
+  "esqueci minha senha" fora do controle do admin).
+
 ---
 
 ## Limitações aceitas (não resolver a menos que seja pedido)
@@ -553,7 +593,9 @@ estável.*
   LAN de confiança doméstica; revisitar (ou adiantar a Fase 11) se a rede
   deixar de ser só isso.
 - **Sem rate-limiting/lockout no login e sem reset de senha por UI** — home,
-  confiança, baixo risco. Esqueceu a senha? O admin redefine direto no banco.
+  confiança, baixo risco. Esqueceu a senha? O admin roda
+  `scripts/reset_password.py` (CLI oculto, fora da API/UI, acesso direto ao
+  banco). Self-service fica pra Fase 13, ainda não deliberada.
 - **Auto-registro aberto na LAN** — qualquer um na Wi-Fi cria um perfil; é
   confiança doméstica por design, não controle de acesso real.
 - PDFs de duas colunas ou com muitas notas de rodapé podem extrair em ordem

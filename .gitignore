@@ -12,6 +12,7 @@ data/*.db-shm
 
 # Env / secrets
 .env
+data/secret_key
 
 # OS
 .DS_Store

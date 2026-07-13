@@ -15,6 +15,32 @@ CREATE TABLE IF NOT EXISTS documents (
     lang TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    active_mode TEXT NOT NULL DEFAULT 'focus',
+    wpm_focus INTEGER NOT NULL DEFAULT 300,
+    wpm_flow INTEGER NOT NULL DEFAULT 250,
+    chunk_focus INTEGER NOT NULL DEFAULT 1,
+    chunk_flow INTEGER NOT NULL DEFAULT 1,
+    font_focus INTEGER NOT NULL DEFAULT 48,
+    font_flow INTEGER NOT NULL DEFAULT 20,
+    orp_enabled INTEGER NOT NULL DEFAULT 0,
+    nav_snap_back_on_click INTEGER NOT NULL DEFAULT 0,
+    nav_pause_on_switch INTEGER NOT NULL DEFAULT 0,
+    theme TEXT NOT NULL DEFAULT 'light',
+    collect_stats INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
 """
 
 # Columns added after the initial release — each gets a migration entry so
@@ -23,6 +49,8 @@ MIGRATIONS = [
     ("content_hash", "ALTER TABLE documents ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"),
     ("word_count", "ALTER TABLE documents ADD COLUMN word_count INTEGER NOT NULL DEFAULT 0"),
     ("lang", "ALTER TABLE documents ADD COLUMN lang TEXT"),
+    ("owner_id", "ALTER TABLE documents ADD COLUMN owner_id INTEGER"),
+    ("visibility", "ALTER TABLE documents ADD COLUMN visibility TEXT NOT NULL DEFAULT 'house'"),
 ]
 
 
