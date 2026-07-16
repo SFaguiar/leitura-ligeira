@@ -120,3 +120,31 @@ class SessionUpdate(BaseModel):
     position: int
     ended_at: bool = False
     avg_wpm: float | None = None
+
+
+class TtsBlockRequest(BaseModel):
+    token: int = 0
+    voice: str | None = None
+
+
+class TtsWordTimestamp(BaseModel):
+    idx: int  # global token index (matches the frontend engine.pointer space)
+    start: float
+    end: float
+
+
+class TtsBlockDetail(BaseModel):
+    id: int
+    document_id: int
+    start_token: int
+    end_token: int
+    voice: str
+    model_version: str
+    alignment_score: float
+    audio_url: str
+    timestamps: list[TtsWordTimestamp]
+
+
+class TtsVoices(BaseModel):
+    voices: list[str]
+    default: str

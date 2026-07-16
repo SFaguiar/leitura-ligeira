@@ -1,4 +1,5 @@
 import { RSVPEngine, computeOrpIndex } from "./rsvp.js";
+import { TTSDriver, describeVoice } from "./tts.js";
 
 const libraryView = document.getElementById("library-view");
 const readerView = document.getElementById("reader-view");
@@ -47,9 +48,22 @@ const flowBackToPositionBtn = document.getElementById("flow-back-to-position");
 const playPauseBtn = document.getElementById("play-pause-btn");
 const rewindBtn = document.getElementById("rewind-btn");
 const forwardBtn = document.getElementById("forward-btn");
+const ttsToggle = document.getElementById("tts-toggle");
+const ttsToggleLabel = document.getElementById("tts-toggle-label");
+const ttsStatus = document.getElementById("tts-status");
+const ttsSettings = document.getElementById("tts-settings");
+const ttsVoice = document.getElementById("tts-voice");
+const ttsRateSlider = document.getElementById("tts-rate-slider");
+const ttsRateValue = document.getElementById("tts-rate-value");
+const ttsEffectiveWpm = document.getElementById("tts-effective-wpm");
+const ttsBufferSlider = document.getElementById("tts-buffer-slider");
+const ttsBufferValue = document.getElementById("tts-buffer-value");
+const ttsBufferStatus = document.getElementById("tts-buffer-status");
 
+const wpmRow = document.getElementById("wpm-row");
 const wpmSlider = document.getElementById("wpm-slider");
 const wpmValue = document.getElementById("wpm-value");
+const chunkRow = document.getElementById("chunk-row");
 const chunkSlider = document.getElementById("chunk-slider");
 const chunkValue = document.getElementById("chunk-value");
 const fontSlider = document.getElementById("font-slider");
@@ -120,6 +134,9 @@ const SETTINGS_TYPES = {
     orpEnabled: "boolean",
     navSnapBackOnClick: "boolean",
     navPauseOnSwitch: "boolean",
+    ttsVoice: "string",
+    ttsRate: "number",
+    ttsBufferSeconds: "number",
 };
 const SETTINGS_DEFAULTS = {
     theme: "light",
@@ -132,6 +149,9 @@ const SETTINGS_DEFAULTS = {
     orpEnabled: false,
     navSnapBackOnClick: false,
     navPauseOnSwitch: false,
+    ttsVoice: "pf_dora",
+    ttsRate: 1,
+    ttsBufferSeconds: 60,
 };
 // Maps a local settings key to its column name on the server. Fase 4 syncs
 // every write here (debounced) so a second device/profile picks it up —
@@ -257,6 +277,18 @@ async function apiErrorMessage(res, fallback) {
 }
 
 function showLogin() {
+    // A 401/logout can replace the reader view without passing through
+    // showLibrary(); discard any queued Flow work and document DOM here too.
+    readerRequestId += 1;
+    resetLibraryState();
+    stopTtsForLifecycle();
+    engine.pause();
+    releaseWakeLock();
+    resetSessionState();
+    resetFlowState();
+    currentDocId = null;
+    ttsVoicesLoaded = false;
+    ttsVoicesRequestId += 1;
     readerView.hidden = true;
     libraryView.hidden = true;
     loginView.hidden = false;
@@ -291,6 +323,9 @@ async function afterLogin() {
         // Offline mirror already has whatever was there before — carry on.
     }
     applyTheme(getSetting("theme"));
+    // Voice discovery is best-effort and may wait on the local Kokoro service;
+    // it must never hold the library hostage during login.
+    loadTtsVoices();
     initFromLocation();
 }
 
@@ -402,6 +437,12 @@ newProfileSubmitBtn.addEventListener("click", async () => {
 });
 
 logoutBtn.addEventListener("click", async () => {
+    if (currentDocId) {
+        await saveProgress();
+        await closeSession();
+    }
+    stopTtsForLifecycle();
+    engine.pause();
     await fetch("/logout", { method: "POST" });
     currentUser = null;
     showLogin();
@@ -426,6 +467,14 @@ async function bootstrap() {
 // and emits events. Mode only decides which region renders that pointer.
 let activeMode = "focus";
 let currentDocId = null;
+let readerRequestId = 0;
+const ttsDriver = new TTSDriver();
+let ttsEnabled = false;
+let ttsVoicesLoaded = false;
+let ttsVoicesRequestId = 0;
+let ttsWasPlaying = false;
+let ttsStatusTimer = null;
+let latestTtsWpm = null;
 
 const FONT_RANGES = {
     focus: { min: 24, max: 96, step: 2 },
@@ -448,7 +497,7 @@ function loadModeSliders() {
     const chunkVal = getSetting(modeKey("chunk"));
     chunkSlider.value = chunkVal;
     chunkValue.textContent = chunkSlider.value;
-    engine.setChunkSize(Number(chunkVal));
+    engine.setChunkSize(ttsEnabled ? 1 : Number(chunkVal));
 
     const fontVal = getSetting(modeKey("font"));
     fontSlider.value = fontVal;
@@ -474,20 +523,32 @@ function applyModeUI(mode) {
 
 // ---- Wake Lock (keep the screen on while reading hands-free) ----
 let wakeLock = null;
+let wakeLockPending = false;
+let wakeLockGeneration = 0;
 
 async function acquireWakeLock() {
-    if (!("wakeLock" in navigator)) return;
+    if (!("wakeLock" in navigator) || wakeLock || wakeLockPending) return;
+    const generation = wakeLockGeneration;
+    wakeLockPending = true;
     try {
-        wakeLock = await navigator.wakeLock.request("screen");
-        wakeLock.addEventListener("release", () => {
-            wakeLock = null;
+        const requestedLock = await navigator.wakeLock.request("screen");
+        if (generation !== wakeLockGeneration || (!engine.playing && !ttsDriver.isPlaying())) {
+            await requestedLock.release();
+            return;
+        }
+        wakeLock = requestedLock;
+        requestedLock.addEventListener("release", () => {
+            if (wakeLock === requestedLock) wakeLock = null;
         });
     } catch (err) {
         wakeLock = null;
+    } finally {
+        wakeLockPending = false;
     }
 }
 
 function releaseWakeLock() {
+    wakeLockGeneration += 1;
     if (wakeLock) {
         wakeLock.release().catch(() => {});
         wakeLock = null;
@@ -495,7 +556,7 @@ function releaseWakeLock() {
 }
 
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && engine.playing && !wakeLock) {
+    if (document.visibilityState === "visible" && (engine.playing || ttsDriver.isPlaying()) && !wakeLock) {
         acquireWakeLock();
     }
     // Minimizar/trocar de app no celular não dispara pause explícito — este
@@ -641,14 +702,26 @@ function renderChunk(tokens) {
 // which is what makes the binary search valid — and .flow-content is
 // position:relative so offsetTop shares scrollTop's coordinate space.
 let flowBuiltForTokens = null;
-let flowParagraphs = []; // [{ el, startIdx, spanified }] — startIdx = global token index of the paragraph's 1st word
+let flowBlocks = []; // [{ el, startIdx, spanified }] — startIdx = global token index of the block's 1st word
 let flowFollowMode = true;
 let flowAutoScrolling = false;
 let flowAutoScrollTimer = null;
 let flowHighlightedEls = [];
+let flowSpanifyFrameId = null;
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function paragraphPlainText(tokens, startIdx, endIdx) {
+// Hardening (Fase 6.1 audit): a "block" is NOT an unbounded paragraph. A
+// pathological document (e.g. a PDF extracted as one break-less wall of text)
+// would otherwise be a single block, and spanifying it would freeze the thread
+// — the exact bug lazy spanification exists to kill. So a block closes at a
+// paragraph end, OR once it is long enough and hits a sentence end (a natural
+// break), OR at a hard ceiling regardless. Sentence-end breaks make the soft
+// splits read like real paragraph breaks. Normal prose paragraphs (< 200
+// words) never split, so nothing changes visually for them.
+const FLOW_BLOCK_SENTENCE_TARGET = 200; // past this many tokens, break at the next sentence end
+const FLOW_BLOCK_MAX_TOKENS = 250; // force a break here even mid-sentence
+
+function blockPlainText(tokens, startIdx, endIdx) {
     let text = "";
     for (let i = startIdx; i < endIdx; i++) {
         text += (i > startIdx ? " " : "") + tokens[i].text;
@@ -656,35 +729,38 @@ function paragraphPlainText(tokens, startIdx, endIdx) {
     return text;
 }
 
-// Replaces a paragraph's plain text with one <span class="flow-word"> per
-// word (idempotent — scroll-spanify and force-spanify can both target the
-// same paragraph). dataset.idx carries the GLOBAL token index so click and
-// highlight can address any word regardless of which paragraph it's in.
-function spanifyParagraph(pIdx) {
-    const para = flowParagraphs[pIdx];
-    if (!para || para.spanified) return;
+// Replaces a block's plain text with one <span class="flow-word"> per word
+// (idempotent — scroll-spanify and force-spanify can both target the same
+// block). Builds into a DocumentFragment and appends ONCE: a single DOM
+// mutation instead of 2·N interleaved appends, so spanifying a block never
+// thrashes layout mid-loop. dataset.idx carries the GLOBAL token index so
+// click and highlight can address any word regardless of which block it's in.
+function spanifyBlock(bIdx) {
+    const blk = flowBlocks[bIdx];
+    if (!blk || blk.spanified) return;
     const tokens = engine.getTokens();
-    const endIdx = pIdx + 1 < flowParagraphs.length ? flowParagraphs[pIdx + 1].startIdx : tokens.length;
-    para.el.textContent = "";
-    for (let i = para.startIdx; i < endIdx; i++) {
+    const endIdx = bIdx + 1 < flowBlocks.length ? flowBlocks[bIdx + 1].startIdx : tokens.length;
+    const frag = document.createDocumentFragment();
+    for (let i = blk.startIdx; i < endIdx; i++) {
         const span = document.createElement("span");
         span.className = "flow-word";
         span.textContent = tokens[i].text;
         span.dataset.idx = i;
-        para.el.appendChild(span);
-        para.el.appendChild(document.createTextNode(" "));
+        frag.appendChild(span);
+        frag.appendChild(document.createTextNode(" "));
     }
-    para.spanified = true;
+    blk.el.replaceChildren(frag);
+    blk.spanified = true;
 }
 
-// Binary search: which paragraph owns a given global token index.
-function paragraphIndexForToken(tokenIdx) {
+// Binary search: which block owns a given global token index.
+function blockIndexForToken(tokenIdx) {
     let lo = 0;
-    let hi = flowParagraphs.length - 1;
+    let hi = flowBlocks.length - 1;
     let result = 0;
     while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        if (flowParagraphs[mid].startIdx <= tokenIdx) {
+        if (flowBlocks[mid].startIdx <= tokenIdx) {
             result = mid;
             lo = mid + 1;
         } else {
@@ -694,67 +770,128 @@ function paragraphIndexForToken(tokenIdx) {
     return result;
 }
 
-// Spanifies every paragraph within one viewport-height above/below the
-// visible area. Binary search finds the first candidate by offsetTop
-// (monotonic), then a forward scan spanifies until past the bottom margin.
-function spanifyVisibleParagraphs() {
-    if (!flowParagraphs.length) return;
+// Spanifies every block within one viewport-height above/below the visible
+// area. Split into a READ phase (measure offsetTop, collect targets — no
+// mutation) and a WRITE phase (spanify) so reads and writes never interleave;
+// interleaving them is what thrashes layout on mobile. offsetTop is monotonic
+// across blocks (they stack in order), which makes the binary search valid,
+// and .flow-content is position:relative so offsetTop shares scrollTop's
+// coordinate space.
+function measureVisibleFlowBlockIndexes() {
+    if (!flowBlocks.length) return;
     const view = flowContent.clientHeight;
-    const top = flowContent.scrollTop - view; // one screen of pre-spanify buffer
-    const bottom = flowContent.scrollTop + view * 2;
+    const scrollTop = flowContent.scrollTop;
+    const top = scrollTop - view; // one screen of pre-spanify buffer
+    const bottom = scrollTop + view * 2;
 
     let lo = 0;
-    let hi = flowParagraphs.length - 1;
-    let startP = flowParagraphs.length;
+    let hi = flowBlocks.length - 1;
+    let startP = flowBlocks.length;
     while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        if (flowParagraphs[mid].el.offsetTop >= top) {
+        if (flowBlocks[mid].el.offsetTop >= top) {
             startP = mid;
             hi = mid - 1;
         } else {
             lo = mid + 1;
         }
     }
-    for (let i = Math.max(0, startP - 1); i < flowParagraphs.length; i++) {
-        if (flowParagraphs[i].el.offsetTop > bottom) break;
-        spanifyParagraph(i);
+    const targets = [];
+    for (let i = Math.max(0, startP - 1); i < flowBlocks.length; i++) {
+        if (flowBlocks[i].el.offsetTop > bottom) break;
+        if (!flowBlocks[i].spanified) targets.push(i);
     }
+    return targets;
+}
+
+function spanifyFlowBlocks(blockIndexes) {
+    for (const i of blockIndexes) spanifyBlock(i);
+}
+
+function spanifyVisibleBlocks() {
+    // Keep the phases structurally separate: this function completes every
+    // layout read before spanifyFlowBlocks performs the first live-DOM write.
+    const targets = measureVisibleFlowBlockIndexes();
+    if (!targets || targets.length === 0) return;
+    spanifyFlowBlocks(targets);
+}
+
+// Coalesce a burst of scroll events into one spanify pass per animation
+// frame. Raw scroll events fire faster than the browser paints, so measuring
+// layout on each one is wasted work; batching to rAF also means the read
+// happens after layout has settled for the frame, not mid-scroll.
+function scheduleSpanifyPass() {
+    if (flowSpanifyFrameId !== null || readerView.hidden || flowRegion.hidden || !flowBlocks.length) return;
+    const scheduledForTokens = flowBuiltForTokens;
+    flowSpanifyFrameId = requestAnimationFrame(() => {
+        flowSpanifyFrameId = null;
+        // A navigation/reset may have happened after this frame was queued.
+        // Never let obsolete work mutate the next document's Flow DOM.
+        if (readerView.hidden || flowRegion.hidden || flowBuiltForTokens !== scheduledForTokens) return;
+        spanifyVisibleBlocks();
+    });
 }
 
 function buildFlowContent(tokens) {
     if (flowBuiltForTokens === tokens) return;
-    flowContent.innerHTML = "";
-    flowParagraphs = [];
+    flowBlocks = [];
 
     const frag = document.createDocumentFragment();
-    let paragraphStart = 0;
-    const flushParagraph = (endIdx) => {
+    let blockStart = 0;
+    let count = 0;
+    const flushBlock = (endIdx) => {
         const el = document.createElement("div");
         el.className = "flow-paragraph";
-        el.textContent = paragraphPlainText(tokens, paragraphStart, endIdx);
+        el.textContent = blockPlainText(tokens, blockStart, endIdx);
         frag.appendChild(el);
-        flowParagraphs.push({ el, startIdx: paragraphStart, spanified: false });
-        paragraphStart = endIdx;
+        flowBlocks.push({ el, startIdx: blockStart, spanified: false });
+        blockStart = endIdx;
+        count = 0;
     };
     tokens.forEach((token, idx) => {
-        if (token.paragraphEnd) flushParagraph(idx + 1);
+        count++;
+        const sentenceBreak = count >= FLOW_BLOCK_SENTENCE_TARGET && token.sentenceEnd;
+        if (token.paragraphEnd || sentenceBreak || count >= FLOW_BLOCK_MAX_TOKENS) {
+            flushBlock(idx + 1);
+        }
     });
-    if (paragraphStart < tokens.length || flowParagraphs.length === 0) {
-        flushParagraph(tokens.length);
+    if (blockStart < tokens.length || flowBlocks.length === 0) {
+        flushBlock(tokens.length);
     }
-    flowContent.appendChild(frag);
+    flowContent.replaceChildren(frag);
 
     flowBuiltForTokens = tokens;
     flowHighlightedEls = [];
     // Reading offsetTop below forces the layout the spanify pass needs, so a
     // direct synchronous call is both correct and cheaper than deferring.
-    spanifyVisibleParagraphs(); // spanify whatever's on screen at the initial (top) position
+    spanifyVisibleBlocks(); // spanify whatever's on screen at the initial (top) position
 }
 
 function ensureFlowBuilt() {
     const tokens = engine.getTokens();
     if (!tokens.length) return;
     buildFlowContent(tokens);
+}
+
+// Full reset of Flow's cached DOM/state — called when a new document loads so
+// the previous document's spans, scroll position and follow state don't leak
+// into the next one (all this state is module-level and would otherwise
+// persist across documents).
+function resetFlowState() {
+    flowBuiltForTokens = null;
+    flowBlocks = [];
+    flowHighlightedEls = [];
+    flowFollowMode = true;
+    flowAutoScrolling = false;
+    if (flowSpanifyFrameId !== null) {
+        cancelAnimationFrame(flowSpanifyFrameId);
+        flowSpanifyFrameId = null;
+    }
+    clearTimeout(flowAutoScrollTimer);
+    flowAutoScrollTimer = null;
+    flowContent.replaceChildren();
+    flowContent.scrollTop = 0;
+    flowBackToPositionBtn.hidden = true;
 }
 
 function buildParagraphMarks(tokens) {
@@ -780,6 +917,7 @@ function scrollFlowToCurrentWord(behavior) {
     clearTimeout(flowAutoScrollTimer);
     flowAutoScrollTimer = setTimeout(() => {
         flowAutoScrolling = false;
+        flowAutoScrollTimer = null;
     }, 200);
 }
 
@@ -789,19 +927,19 @@ function scrollFlowToCurrentWord(behavior) {
 // the index is out of range.
 function flowWordEl(tokenIdx) {
     const total = engine.getTokens().length;
-    if (tokenIdx < 0 || tokenIdx >= total || !flowParagraphs.length) return null;
-    const pIdx = paragraphIndexForToken(tokenIdx);
-    spanifyParagraph(pIdx);
+    if (tokenIdx < 0 || tokenIdx >= total || !flowBlocks.length) return null;
+    const bIdx = blockIndexForToken(tokenIdx);
+    spanifyBlock(bIdx);
     // .children is element-only (the " " separators are text nodes, so they
-    // don't shift the index) — child[k] is the k-th word of the paragraph.
-    return flowParagraphs[pIdx].el.children[tokenIdx - flowParagraphs[pIdx].startIdx] || null;
+    // don't shift the index) — child[k] is the k-th word of the block.
+    return flowBlocks[bIdx].el.children[tokenIdx - flowBlocks[bIdx].startIdx] || null;
 }
 
 // Highlights the *whole* chunk currently on screen (all N words when
 // "palavras por vez" > 1), not just its first word — so Flow matches what
 // Focus is actually flashing instead of looking like it skipped words.
 function updateFlowHighlight(chunkTokens) {
-    if (flowRegion.hidden || !flowParagraphs.length) return;
+    if (flowRegion.hidden || !flowBlocks.length) return;
     const start = engine.pointer;
     const count = chunkTokens ? chunkTokens.length : 1;
     flowHighlightedEls.forEach((el) => el.classList.remove("flow-current"));
@@ -819,11 +957,11 @@ function updateFlowHighlight(chunkTokens) {
 }
 
 flowContent.addEventListener("scroll", () => {
-    // Runs for every scroll (user or auto-follow) — new paragraphs entering
-    // the viewport need spanifying either way. Direct call (no rAF): the
-    // browser already rate-limits scroll events, and it's a binary search
-    // plus a bounded scan, not a full sweep.
-    spanifyVisibleParagraphs();
+    if (!flowBlocks.length || readerView.hidden || flowRegion.hidden) return;
+    // Runs for every scroll (user or auto-follow) — new blocks entering the
+    // viewport need spanifying either way, coalesced to one pass per frame
+    // (see scheduleSpanifyPass) so bursts of scroll events don't thrash.
+    scheduleSpanifyPass();
     if (flowAutoScrolling) return;
     if (flowFollowMode) {
         flowFollowMode = false;
@@ -840,8 +978,7 @@ flowBackToPositionBtn.addEventListener("click", () => {
 flowContent.addEventListener("click", (e) => {
     const wordEl = e.target.closest(".flow-word");
     if (!wordEl) return;
-    engine.seekToIndex(Number(wordEl.dataset.idx));
-    refreshPlayButton();
+    navigateToToken(Number(wordEl.dataset.idx));
     if (navSnapBackOnClick) {
         modeFocusBtn.click();
     }
@@ -853,6 +990,16 @@ function updateLiveCounter(pointer, total) {
         return;
     }
     const remaining = Math.max(0, total - pointer);
+    if (ttsEnabled) {
+        const rate = Number(ttsRateSlider.value) || 1;
+        const wpmLabel = Number.isFinite(latestTtsWpm)
+            ? ` · ≈ ${Math.round(latestTtsWpm).toLocaleString()} WPM`
+            : "";
+        readingProgressInfo.textContent =
+            `${pointer.toLocaleString()} / ${total.toLocaleString()} palavras · ` +
+            `Narrador ${rate.toFixed(1)}x${wpmLabel}`;
+        return;
+    }
     const wpm = Number(wpmSlider.value) || 300;
     const minutesLeft = Math.max(0, Math.round(remaining / wpm));
     readingProgressInfo.textContent =
@@ -894,16 +1041,212 @@ const engine = new RSVPEngine({
     },
 });
 
+function showTtsStatus(message, { error = false, timeout = 0 } = {}) {
+    clearTimeout(ttsStatusTimer);
+    ttsStatusTimer = null;
+    ttsStatus.textContent = message || "";
+    ttsStatus.classList.toggle("error", error);
+    ttsStatus.hidden = !message;
+    if (message && timeout > 0) {
+        ttsStatusTimer = setTimeout(() => {
+            ttsStatus.hidden = true;
+            ttsStatusTimer = null;
+        }, timeout);
+    }
+}
+
+function buildVoiceGroups(voices) {
+    const groups = new Map();
+    voices.forEach((voice) => {
+        const metadata = describeVoice(voice);
+        if (!groups.has(metadata.locale)) {
+            groups.set(metadata.locale, { order: metadata.order, voices: [] });
+        }
+        groups.get(metadata.locale).voices.push(metadata);
+    });
+    return [...groups.entries()]
+        .sort(([, left], [, right]) => left.order - right.order)
+        .map(([locale, group]) => {
+            const optgroup = document.createElement("optgroup");
+            optgroup.label = locale;
+            group.voices
+                .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"))
+                .forEach((metadata) => {
+                    const option = document.createElement("option");
+                    option.value = metadata.id;
+                    option.textContent = metadata.label;
+                    if (metadata.lang) option.lang = metadata.lang;
+                    optgroup.appendChild(option);
+                });
+            return optgroup;
+        });
+}
+
+async function loadTtsVoices() {
+    if (ttsVoicesLoaded) return;
+    const requestId = ++ttsVoicesRequestId;
+    try {
+        const res = await apiFetch("/tts/voices");
+        if (requestId !== ttsVoicesRequestId || !currentUser) return;
+        if (!res.ok) return;
+        const data = await res.json();
+        if (requestId !== ttsVoicesRequestId || !currentUser) return;
+        const voices = Array.isArray(data.voices) ? data.voices : [];
+        const serverDefault = data.default || "pf_dora";
+        const stored = getSetting("ttsVoice") || serverDefault;
+        const selected = voices.length === 0
+            ? stored
+            : voices.includes(stored)
+                ? stored
+                : voices.includes(serverDefault) ? serverDefault : voices[0];
+        const options = voices.length ? voices : [selected || serverDefault];
+        ttsVoice.replaceChildren(...buildVoiceGroups(options));
+        ttsVoice.value = selected || serverDefault;
+        setSetting("ttsVoice", ttsVoice.value);
+        if (currentDocId) {
+            const resume = ttsDriver.isPlaying();
+            ttsDriver.setVoice(ttsVoice.value);
+            if (ttsEnabled && resume) await ttsDriver.play();
+        }
+        ttsVoicesLoaded = true;
+    } catch {
+        // The default voice remains usable; generation will surface a precise
+        // error if Kokoro itself is unavailable when the user presses play.
+    }
+}
+
+function applyTtsUi() {
+    ttsToggle.classList.toggle("active", ttsEnabled);
+    ttsToggle.setAttribute("aria-pressed", String(ttsEnabled));
+    ttsToggleLabel.textContent = ttsEnabled ? "Narrador ativo" : "Ativar Narrador";
+    ttsSettings.hidden = !ttsEnabled;
+    wpmRow.hidden = ttsEnabled;
+    chunkRow.hidden = ttsEnabled;
+}
+
+function handleTtsStateChange({ playing, loading }) {
+    refreshPlayButton();
+    if (!ttsWasPlaying && playing) {
+        openSessionIfNeeded();
+    } else if (ttsWasPlaying && !playing && !loading) {
+        saveProgress();
+    }
+    ttsWasPlaying = playing;
+}
+
+function handleTtsEnd() {
+    refreshPlayButton();
+    if (activeMode === "focus") {
+        rsvpDisplay.classList.remove("orp-single");
+        rsvpDisplay.textContent = "Fim";
+        fitDisplayText("Fim");
+    }
+    progressFill.style.width = "100%";
+    saveProgress({ status: "lido" });
+    closeSession();
+}
+
+function handleTtsMetricsChange({ rate, effectiveWpm }) {
+    const safeRate = Math.max(0.5, Math.min(4, Number(rate) || 1));
+    ttsRateValue.textContent = `${safeRate.toFixed(1)}x`;
+    latestTtsWpm = Number.isFinite(effectiveWpm) ? effectiveWpm : null;
+    ttsEffectiveWpm.textContent = latestTtsWpm === null
+        ? "—"
+        : Math.round(latestTtsWpm).toLocaleString();
+    updateLiveCounter(engine.pointer, engine.getTokens().length);
+}
+
+function handleTtsBufferChange({ readySeconds, targetSeconds, blocks }) {
+    const ready = Math.max(0, Math.round(Number(readySeconds) || 0));
+    const target = Math.max(30, Math.round(Number(targetSeconds) || 60));
+    ttsBufferValue.textContent = `${target}s`;
+    ttsBufferStatus.textContent = blocks > 0
+        ? `${ready}s prontos em ${blocks} ${blocks === 1 ? "bloco" : "blocos"}`
+        : "Preparado sob demanda";
+}
+
+function configureTtsForDocument(documentId) {
+    ttsDriver.configure({
+        engine,
+        apiFetch,
+        docId: documentId,
+        voice: ttsVoice.value || getSetting("ttsVoice") || "pf_dora",
+        onError: (message) => showTtsStatus(message, { error: true }),
+        onEnd: handleTtsEnd,
+        onStateChange: handleTtsStateChange,
+        onMetricsChange: handleTtsMetricsChange,
+        onBufferChange: handleTtsBufferChange,
+        onBlockChange: (block) => {
+            if (block.timing_fallback) {
+                showTtsStatus("Áudio mantido com sincronização aproximada neste trecho.");
+            } else {
+                showTtsStatus("");
+            }
+        },
+    });
+    ttsDriver.setRate(Number(ttsRateSlider.value));
+    ttsDriver.setBufferSeconds(Number(ttsBufferSlider.value));
+}
+
+function setTtsEnabled(enabled) {
+    if (enabled === ttsEnabled) return;
+    if (enabled) {
+        engine.pause();
+        ttsEnabled = true;
+        engine.setChunkSize(1);
+        engine.rerender();
+        ttsDriver.setVoice(ttsVoice.value || "pf_dora");
+        ttsDriver.setRate(Number(ttsRateSlider.value));
+        ttsDriver.setBufferSeconds(Number(ttsBufferSlider.value));
+        showTtsStatus("");
+    } else {
+        ttsEnabled = false;
+        ttsDriver.stop();
+        ttsWasPlaying = false;
+        engine.setChunkSize(Number(getSetting(modeKey("chunk"))) || 1);
+        engine.rerender();
+        saveProgress();
+        showTtsStatus("");
+    }
+    applyTtsUi();
+    refreshPlayButton();
+}
+
+function stopTtsForLifecycle() {
+    ttsEnabled = false;
+    ttsDriver.reset();
+    ttsWasPlaying = false;
+    latestTtsWpm = null;
+    ttsEffectiveWpm.textContent = "—";
+    ttsBufferStatus.textContent = "Preparado sob demanda";
+    clearTimeout(ttsStatusTimer);
+    ttsStatusTimer = null;
+    showTtsStatus("");
+    applyTtsUi();
+    engine.setChunkSize(Number(getSetting(modeKey("chunk"))) || 1);
+}
+
 function refreshPlayButton() {
-    playPauseBtn.textContent = engine.playing ? "⏸" : "▶";
-    if (engine.playing) {
+    const playing = ttsEnabled ? ttsDriver.isPlaying() : engine.playing;
+    const loading = ttsEnabled && ttsDriver.isLoading();
+    playPauseBtn.textContent = playing ? "⏸" : "▶";
+    playPauseBtn.classList.toggle("is-loading", loading);
+    playPauseBtn.setAttribute("aria-busy", String(loading));
+    playPauseBtn.setAttribute("aria-label", loading ? "Carregando narração" : playing ? "Pausar" : "Reproduzir");
+    if (engine.playing || ttsDriver.isPlaying()) {
         acquireWakeLock();
     } else {
         releaseWakeLock();
     }
 }
 
-function doTogglePlay(btn) {
+async function doTogglePlay(btn) {
+    if (ttsEnabled) {
+        engine.pause();
+        await ttsDriver.toggle();
+        if (btn) btn.blur();
+        return;
+    }
     const wasPlaying = engine.playing;
     engine.toggle();
     refreshPlayButton();
@@ -914,15 +1257,50 @@ function doTogglePlay(btn) {
     }
     if (btn) btn.blur();
 }
-function doRewind(btn) {
-    engine.rewind();
+
+function sentenceStart(tokens, fromIndex) {
+    let idx = fromIndex;
+    while (idx > 0 && !tokens[idx - 1].sentenceEnd) idx -= 1;
+    return idx;
+}
+
+function rewindTarget() {
+    const tokens = engine.getTokens();
+    if (!tokens.length) return 0;
+    const currentStart = sentenceStart(tokens, engine.pointer);
+    return currentStart < engine.pointer
+        ? currentStart
+        : currentStart > 0 ? sentenceStart(tokens, currentStart - 1) : 0;
+}
+
+function forwardTarget() {
+    const tokens = engine.getTokens();
+    if (!tokens.length) return 0;
+    let idx = Math.max(0, Math.min(tokens.length - 1, engine.pointer));
+    while (idx < tokens.length - 1 && !tokens[idx].sentenceEnd) idx += 1;
+    return Math.min(tokens.length - 1, idx + 1);
+}
+
+async function navigateToToken(tokenIdx) {
+    const total = engine.getTokens().length;
+    if (!total) return;
+    const target = Math.max(0, Math.min(total - 1, Math.floor(tokenIdx)));
+    if (ttsEnabled) {
+        await ttsDriver.seek(target);
+    } else {
+        engine.seekToIndex(target);
+    }
     refreshPlayButton();
+}
+
+async function doRewind(btn) {
+    await navigateToToken(rewindTarget());
     saveProgress();
     if (btn) btn.blur();
 }
-function doForward(btn) {
-    engine.forward();
-    refreshPlayButton();
+
+async function doForward(btn) {
+    await navigateToToken(forwardTarget());
     saveProgress();
     if (btn) btn.blur();
 }
@@ -932,14 +1310,52 @@ rewindBtn.addEventListener("click", () => doRewind(rewindBtn));
 forwardBtn.addEventListener("click", () => doForward(forwardBtn));
 rsvpStage.addEventListener("click", () => doTogglePlay());
 
+const initialTtsRate = Math.max(0.5, Math.min(4, Number(getSetting("ttsRate")) || 1));
+ttsRateSlider.value = initialTtsRate.toFixed(1);
+ttsRateValue.textContent = `${initialTtsRate.toFixed(1)}x`;
+const initialTtsBuffer = Math.max(
+    30,
+    Math.min(120, Math.round((Number(getSetting("ttsBufferSeconds")) || 60) / 15) * 15),
+);
+ttsBufferSlider.value = String(initialTtsBuffer);
+ttsBufferValue.textContent = `${initialTtsBuffer}s`;
+applyTtsUi();
+
+ttsToggle.addEventListener("click", () => {
+    setTtsEnabled(!ttsEnabled);
+    ttsToggle.blur();
+});
+
+ttsVoice.addEventListener("change", async () => {
+    const resume = ttsDriver.isPlaying();
+    setSetting("ttsVoice", ttsVoice.value);
+    ttsDriver.setVoice(ttsVoice.value);
+    if (ttsEnabled && resume) await ttsDriver.play();
+});
+
+ttsRateSlider.addEventListener("input", () => {
+    const rate = Math.max(0.5, Math.min(4, Number(ttsRateSlider.value) || 1));
+    ttsRateValue.textContent = `${rate.toFixed(1)}x`;
+    setSetting("ttsRate", rate);
+    ttsDriver.setRate(rate);
+});
+
+ttsBufferSlider.addEventListener("input", () => {
+    const seconds = Math.max(30, Math.min(120, Number(ttsBufferSlider.value) || 60));
+    ttsBufferValue.textContent = `${seconds}s`;
+    setSetting("ttsBufferSeconds", seconds);
+    ttsDriver.setBufferSeconds(seconds);
+});
+
 // ---- Mode switching ----
 // Entering Flow pushes a history entry; the Foco button (and the Android
 // back gesture) pop it via history.back() instead of pushing another entry
 // — mirrors the library/reader back-button pattern already in this app.
 function switchMode(mode, { push = true } = {}) {
     if (mode === activeMode) return;
-    if (navPauseOnSwitch && engine.playing) {
+    if (navPauseOnSwitch && (engine.playing || ttsDriver.isPlaying() || ttsDriver.isLoading())) {
         engine.pause();
+        if (ttsEnabled) ttsDriver.pause();
     }
     saveProgress();
     activeMode = mode;
@@ -971,25 +1387,28 @@ function seekFromPointerEvent(e) {
     const rect = scrubber.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
     const fraction = rect.width ? x / rect.width : 0;
-    engine.seekFraction(fraction);
-    refreshPlayButton();
+    const total = engine.getTokens().length;
+    return navigateToToken(Math.floor(fraction * total));
 }
 
 let scrubbing = false;
+let scrubSeekPromise = Promise.resolve();
 scrubber.addEventListener("pointerdown", (e) => {
     scrubbing = true;
     scrubber.setPointerCapture(e.pointerId);
-    seekFromPointerEvent(e);
+    scrubSeekPromise = seekFromPointerEvent(e);
 });
 scrubber.addEventListener("pointermove", (e) => {
-    if (scrubbing) seekFromPointerEvent(e);
+    if (scrubbing) scrubSeekPromise = seekFromPointerEvent(e);
 });
-scrubber.addEventListener("pointerup", () => {
+scrubber.addEventListener("pointerup", async () => {
     scrubbing = false;
+    await scrubSeekPromise;
     saveProgress();
 });
-scrubber.addEventListener("pointercancel", () => {
+scrubber.addEventListener("pointercancel", async () => {
     scrubbing = false;
+    await scrubSeekPromise;
     saveProgress();
 });
 
@@ -1026,12 +1445,22 @@ document.addEventListener("keydown", (e) => {
         doForward();
     } else if (e.code === "ArrowUp") {
         e.preventDefault();
-        wpmSlider.value = Math.min(1000, Number(wpmSlider.value) + 10);
-        wpmSlider.dispatchEvent(new Event("input"));
+        if (ttsEnabled) {
+            ttsRateSlider.value = Math.min(4, Number(ttsRateSlider.value) + 0.1).toFixed(1);
+            ttsRateSlider.dispatchEvent(new Event("input"));
+        } else {
+            wpmSlider.value = Math.min(1000, Number(wpmSlider.value) + 10);
+            wpmSlider.dispatchEvent(new Event("input"));
+        }
     } else if (e.code === "ArrowDown") {
         e.preventDefault();
-        wpmSlider.value = Math.max(100, Number(wpmSlider.value) - 10);
-        wpmSlider.dispatchEvent(new Event("input"));
+        if (ttsEnabled) {
+            ttsRateSlider.value = Math.max(0.5, Number(ttsRateSlider.value) - 0.1).toFixed(1);
+            ttsRateSlider.dispatchEvent(new Event("input"));
+        } else {
+            wpmSlider.value = Math.max(100, Number(wpmSlider.value) - 10);
+            wpmSlider.dispatchEvent(new Event("input"));
+        }
     }
 });
 
@@ -1059,7 +1488,9 @@ function startHeartbeatIfNeeded() {
 }
 
 async function sendHeartbeat() {
-    if (!currentSessionId || !engine.playing) return;
+    // In narrator mode the audio element is the clock and engine.playing is
+    // intentionally false; either clock therefore keeps the session alive.
+    if (!currentSessionId || (!engine.playing && !ttsDriver.isPlaying())) return;
     await apiFetch(`/sessions/${currentSessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1090,7 +1521,7 @@ async function closeSession() {
     if (!currentSessionId) return;
     const sessionId = currentSessionId;
     currentSessionId = null;
-    const wpm = Number(wpmSlider.value) || 300;
+    const wpm = ttsEnabled ? null : Number(wpmSlider.value) || 300;
     await apiFetch(`/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1115,11 +1546,14 @@ function resetSessionState() {
 // (or following a #/read/{id}/{mode} link) opens straight to that document
 // and mode, and Fluxo→Foco→biblioteca pops one level at a time.
 function showLibrary(push = true) {
+    readerRequestId += 1;
     if (currentDocId) {
         saveProgress();
         closeSession();
     }
+    stopTtsForLifecycle();
     engine.pause();
+    resetFlowState();
     readerView.hidden = true;
     libraryView.hidden = false;
     currentDocId = null;
@@ -1128,6 +1562,8 @@ function showLibrary(push = true) {
 }
 
 async function showReader(id, push = true, mode = "focus") {
+    const requestId = ++readerRequestId;
+    cancelLibraryRequest();
     // Trocar de documento direto (via popstate entre duas leituras, sem
     // passar pela biblioteca) precisa fechar a sessão/salvar a posição do
     // documento anterior antes de carregar o novo.
@@ -1135,7 +1571,9 @@ async function showReader(id, push = true, mode = "focus") {
         saveProgress();
         closeSession();
     }
+    stopTtsForLifecycle();
     const res = await apiFetch(`/documents/${id}`);
+    if (requestId !== readerRequestId) return;
     if (!res.ok) {
         if (res.status !== 401) alert("Não foi possível carregar o documento.");
         return;
@@ -1161,7 +1599,7 @@ async function showReader(id, push = true, mode = "focus") {
     updateOrpVisibility();
     updateSnapBackVisibility();
 
-    flowBuiltForTokens = null; // new document — Flow's cached spans are stale
+    resetFlowState(); // new document — clear Flow's cached spans, scroll and follow state
     engine.load(doc.raw_text);
     buildParagraphMarks(engine.getTokens());
     if (mode === "flow") {
@@ -1171,6 +1609,7 @@ async function showReader(id, push = true, mode = "focus") {
         ensureFlowBuilt();
         engine.rerender();
     }
+    configureTtsForDocument(id);
     refreshPlayButton();
     if (push) history.pushState({ view: "reader", id, mode }, "", `#/read/${id}/${mode}`);
 
@@ -1178,6 +1617,7 @@ async function showReader(id, push = true, mode = "focus") {
     // 0) — upsert lazy no servidor: cria a linha se não existir e promove
     // 'quero_ler' -> 'lendo' automaticamente, sem sobrescrever 'lido'/'abandonado'.
     const progressRes = await apiFetch(`/documents/${id}/progress`);
+    if (requestId !== readerRequestId) return;
     if (progressRes.ok) {
         const progress = await progressRes.json();
         // seekToIndex() já dispara _render() -> onChunk, que já sabe decidir
@@ -1225,9 +1665,16 @@ function estimatedMinutes(wordCount) {
 // Estado null (nunca aberto) mostra "— sem status —": placeholder só visual,
 // nunca enviado via PUT — evita fingir que uma escolha já foi feita quando
 // não existe linha em reading_progress ainda.
+function openLibraryDocument(doc) {
+    if (doc.progress_status === "abandonado") {
+        openAbandonedModal(doc);
+    } else {
+        showReader(doc.id);
+    }
+}
+
 function buildDocListItem(doc) {
     const manageable = canManage(doc);
-    const isAbandoned = doc.progress_status === "abandonado";
     const pct = doc.word_count && doc.progress_position != null
         ? Math.min(100, Math.round((doc.progress_position / doc.word_count) * 100))
         : 0;
@@ -1258,23 +1705,26 @@ function buildDocListItem(doc) {
         `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
         `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}${privacyTag}`;
 
-    li.querySelector(".doc-info").addEventListener("click", () => {
-        if (isAbandoned) {
-            openAbandonedModal(doc);
-        } else {
-            showReader(doc.id);
-        }
-    });
+    li.querySelector(".doc-info").addEventListener("click", () => openLibraryDocument(doc));
 
     li.querySelector(".status-select").addEventListener("change", async (e) => {
         e.stopPropagation();
         const newStatus = e.target.value;
         if (!newStatus) return;
-        await apiFetch(`/documents/${doc.id}/progress`, {
+        const previousStatus = doc.progress_status;
+        // Keep click behavior correct while the PUT/refetch is still in flight:
+        // marking as abandoned must protect the item immediately, in any shelf.
+        doc.progress_status = newStatus;
+        const res = await apiFetch(`/documents/${doc.id}/progress`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: newStatus }),
         });
+        if (!res.ok) {
+            doc.progress_status = previousStatus;
+            if (res.status !== 401) fetchLibrary();
+            return;
+        }
         fetchLibrary();
     });
 
@@ -1300,6 +1750,8 @@ let currentShelf = "all";
 let currentCollection = "";
 let searchQuery = "";
 let searchDebounceTimer = null;
+let libraryRequestId = 0;
+let libraryAbortController = null;
 
 const SHELF_PREDICATES = {
     all: () => true,
@@ -1311,11 +1763,17 @@ const SHELF_PREDICATES = {
 
 function populateCollectionFilter() {
     const collections = [...new Set(allFetchedDocs.map((d) => d.collection).filter(Boolean))].sort();
-    const current = libraryCollectionFilter.value;
     libraryCollectionFilter.innerHTML =
         '<option value="">Todas as coleções</option>' +
         collections.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-    if (collections.includes(current)) libraryCollectionFilter.value = current;
+    if (collections.includes(currentCollection)) {
+        libraryCollectionFilter.value = currentCollection;
+    } else {
+        // Search results can remove the selected collection from the option
+        // list. Keep UI and state aligned instead of applying a hidden filter.
+        currentCollection = "";
+        libraryCollectionFilter.value = "";
+    }
     editDocCollectionList.innerHTML = collections.map((c) => `<option value="${escapeHtml(c)}"></option>`).join("");
 }
 
@@ -1326,7 +1784,9 @@ function renderLibrary() {
         (d) => predicate(d) && (!currentCollection || d.collection === currentCollection)
     );
     if (allFetchedDocs.length === 0) {
-        libraryEmpty.textContent = "Nenhum texto ainda. Cole um texto para começar.";
+        libraryEmpty.textContent = searchQuery
+            ? "Nenhum documento corresponde à busca."
+            : "Nenhum texto ainda. Cole um texto para começar.";
         libraryEmpty.hidden = false;
     } else if (filtered.length === 0) {
         libraryEmpty.textContent = "Nenhum documento encontrado com esse filtro.";
@@ -1337,17 +1797,67 @@ function renderLibrary() {
     filtered.forEach((doc) => documentList.appendChild(buildDocListItem(doc)));
 }
 
+function cancelLibraryRequest() {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = null;
+    libraryRequestId++;
+    if (libraryAbortController) {
+        libraryAbortController.abort();
+        libraryAbortController = null;
+    }
+    libraryView.removeAttribute("aria-busy");
+}
+
+function resetLibraryState() {
+    cancelLibraryRequest();
+    allFetchedDocs = [];
+    currentShelf = "all";
+    currentCollection = "";
+    searchQuery = "";
+    librarySearchInput.value = "";
+    libraryCollectionFilter.value = "";
+    documentList.replaceChildren();
+    libraryEmpty.hidden = true;
+    shelfTabButtons.forEach((btn) => {
+        const isActive = btn.dataset.shelf === "all";
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-selected", isActive ? "true" : "false");
+        btn.tabIndex = isActive ? 0 : -1;
+    });
+}
+
 async function fetchLibrary() {
+    if (libraryAbortController) libraryAbortController.abort();
+    const requestId = ++libraryRequestId;
+    const controller = new AbortController();
+    libraryAbortController = controller;
     const url = searchQuery ? `/documents?q=${encodeURIComponent(searchQuery)}` : "/documents";
-    const res = await apiFetch(url);
-    if (!res.ok) return;
-    allFetchedDocs = await res.json();
-    populateCollectionFilter();
-    renderLibrary();
+    libraryView.setAttribute("aria-busy", "true");
+    try {
+        const res = await apiFetch(url, { signal: controller.signal });
+        if (requestId !== libraryRequestId || !res.ok) return;
+        const docs = await res.json();
+        if (requestId !== libraryRequestId) return;
+        allFetchedDocs = docs;
+        populateCollectionFilter();
+        renderLibrary();
+    } catch (error) {
+        if (error?.name === "AbortError" || requestId !== libraryRequestId) return;
+        libraryEmpty.textContent = "Não foi possível atualizar a biblioteca.";
+        libraryEmpty.hidden = false;
+    } finally {
+        if (requestId === libraryRequestId) {
+            libraryAbortController = null;
+            libraryView.removeAttribute("aria-busy");
+        }
+    }
 }
 
 librarySearchInput.addEventListener("input", () => {
     clearTimeout(searchDebounceTimer);
+    // Invalidate the current query immediately, not only after the 300ms
+    // debounce. Its late response must not repaint results for stale text.
+    cancelLibraryRequest();
     searchDebounceTimer = setTimeout(() => {
         searchQuery = librarySearchInput.value.trim();
         fetchLibrary();
@@ -1362,8 +1872,27 @@ libraryCollectionFilter.addEventListener("change", () => {
 shelfTabButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
         currentShelf = btn.dataset.shelf;
-        shelfTabButtons.forEach((b) => b.classList.toggle("active", b === btn));
+        shelfTabButtons.forEach((b) => {
+            const isActive = b === btn;
+            b.classList.toggle("active", isActive);
+            b.setAttribute("aria-selected", isActive ? "true" : "false");
+            b.tabIndex = isActive ? 0 : -1;
+        });
         renderLibrary();
+    });
+});
+
+shelfTabButtons.forEach((btn, index) => {
+    btn.addEventListener("keydown", (e) => {
+        let targetIndex = null;
+        if (e.key === "ArrowRight") targetIndex = (index + 1) % shelfTabButtons.length;
+        if (e.key === "ArrowLeft") targetIndex = (index - 1 + shelfTabButtons.length) % shelfTabButtons.length;
+        if (e.key === "Home") targetIndex = 0;
+        if (e.key === "End") targetIndex = shelfTabButtons.length - 1;
+        if (targetIndex === null) return;
+        e.preventDefault();
+        shelfTabButtons[targetIndex].focus();
+        shelfTabButtons[targetIndex].click();
     });
 });
 
@@ -1581,11 +2110,10 @@ function renderToc(toc) {
     toc.forEach((entry) => {
         const li = document.createElement("li");
         li.textContent = entry.title;
-        li.addEventListener("click", () => {
-            engine.seekToIndex(entry.token_index);
-            refreshPlayButton();
-            saveProgress();
+        li.addEventListener("click", async () => {
             closeTocDropdown();
+            await navigateToToken(entry.token_index);
+            saveProgress();
         });
         tocList.appendChild(li);
     });

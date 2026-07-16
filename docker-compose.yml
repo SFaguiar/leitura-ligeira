@@ -3,10 +3,57 @@ services:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      KOKORO_URL: http://tts:8880
+      KOKORO_VOICE: ${KOKORO_VOICE:-pf_dora}
+    depends_on:
+      tts:
+        condition: service_healthy
     volumes:
       - ./data:/app/data
     restart: unless-stopped
 
+  tts:
+    # Kokoro-FastAPI v0.6.0, CUDA 12.8 build required by RTX 50-series.
+    # Version + immutable digest: a registry retag can never silently replace
+    # the model runtime that passed the Portuguese synchronization tests.
+    image: ghcr.io/remsky/kokoro-fastapi-gpu:v0.6.0-cu128@sha256:9ade1e3a52d3e8c62123a1b23f7677ed909d90270b6f8ec660179b31b2448124
+    gpus: all
+    init: true
+    shm_size: "1gb"
+    stop_grace_period: 30s
+    environment:
+      # Pin Kokoro's long-form splitter instead of inheriting future defaults.
+      TARGET_MIN_TOKENS: "175"
+      TARGET_MAX_TOKENS: "250"
+      ABSOLUTE_MAX_TOKENS: "450"
+      ADVANCED_TEXT_NORMALIZATION: "false"
+      # Only Leitura Ligeira calls this loopback-bound service. Disable UI and
+      # administrative/debug surfaces that are not part of that contract.
+      ENABLE_WEB_PLAYER: "false"
+      CORS_ENABLED: "false"
+      ALLOW_LOCAL_VOICE_SAVING: "false"
+      ALLOW_DEV_UNLOAD: "false"
+      ENABLE_DEBUG_ENDPOINTS: "false"
+      OUTPUT_DIR_SIZE_LIMIT_MB: "256"
+    ports:
+      # The browser never calls Kokoro directly; only the local FastAPI app
+      # needs this host binding when it runs natively outside Compose.
+      - "127.0.0.1:8880:8880"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8880/health', timeout=5)"]
+      interval: 20s
+      timeout: 6s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Historical planning note (implemented above in Phase 8):
 # Phase 3 will add a `tts` service here (Kokoro-FastAPI) joined to the
 # existing local AI stack's Docker network, e.g.:
 #

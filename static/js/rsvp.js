@@ -110,6 +110,17 @@ export class RSVPEngine {
         this._render();
     }
 
+    // Display-only sync driven by an EXTERNAL clock (TTS audio.currentTime).
+    // Unlike seekToIndex it does NOT pause() — the engine's own setTimeout loop
+    // isn't the thing playing during TTS, the audio element is — and it never
+    // starts a tick. It only moves the pointer and redraws the current chunk
+    // (onChunk routes to the Focus flash or the Flow highlight). Callers should
+    // only invoke it when the token index actually changes, not every frame.
+    syncToIndex(idx) {
+        this.pointer = Math.max(0, Math.min(this.tokens.length - 1, idx));
+        this._render();
+    }
+
     setWpm(wpm) {
         this.wpm = Math.max(100, Math.min(1000, wpm));
     }

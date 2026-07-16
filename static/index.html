@@ -54,20 +54,20 @@
     <div class="library-actions">
         <button id="new-doc-btn" class="btn btn-primary">+ Novo texto</button>
     </div>
-    <div class="library-toolbar">
-        <input id="library-search" class="library-search" type="search" placeholder="Buscar por título ou conteúdo..." />
-        <select id="library-collection-filter" class="library-collection-filter">
+    <div class="library-toolbar" role="search" aria-label="Buscar e filtrar biblioteca">
+        <input id="library-search" class="library-search" type="search" placeholder="Buscar por título ou conteúdo..." aria-label="Buscar por título ou conteúdo" autocomplete="off" />
+        <select id="library-collection-filter" class="library-collection-filter" aria-label="Filtrar por coleção">
             <option value="">Todas as coleções</option>
         </select>
     </div>
-    <div class="mode-switch shelf-tabs">
-        <button class="mode-btn active" data-shelf="all">Todos</button>
-        <button class="mode-btn" data-shelf="quero_ler">Quero ler</button>
-        <button class="mode-btn" data-shelf="lendo">Lendo</button>
-        <button class="mode-btn" data-shelf="lido">Lido</button>
-        <button class="mode-btn" data-shelf="abandonado">Abandonado</button>
+    <div class="mode-switch shelf-tabs" role="tablist" aria-label="Prateleiras da biblioteca">
+        <button type="button" class="mode-btn active" role="tab" aria-selected="true" data-shelf="all">Todos</button>
+        <button type="button" class="mode-btn" role="tab" aria-selected="false" tabindex="-1" data-shelf="quero_ler">Quero ler</button>
+        <button type="button" class="mode-btn" role="tab" aria-selected="false" tabindex="-1" data-shelf="lendo">Lendo</button>
+        <button type="button" class="mode-btn" role="tab" aria-selected="false" tabindex="-1" data-shelf="lido">Lido</button>
+        <button type="button" class="mode-btn" role="tab" aria-selected="false" tabindex="-1" data-shelf="abandonado">Abandonado</button>
     </div>
-    <ul id="document-list" class="document-list"></ul>
+    <ul id="document-list" class="document-list" aria-live="polite"></ul>
     <p id="library-empty" class="empty-hint" hidden>Nenhum texto ainda. Cole um texto para começar.</p>
 </main>
 
@@ -181,14 +181,42 @@
             <button id="forward-btn" class="icon-btn" title="Avançar para a próxima frase">⏭</button>
         </div>
 
+        <div class="tts-toolbar">
+            <button id="tts-toggle" class="btn tts-toggle-btn" type="button" aria-pressed="false" aria-controls="tts-settings">
+                <span aria-hidden="true">🔊</span>
+                <span id="tts-toggle-label">Ativar Narrador</span>
+            </button>
+            <p id="tts-status" class="tts-status" role="status" aria-live="polite" hidden></p>
+        </div>
+
         <div class="sliders">
-            <div class="slider-row">
+            <div id="wpm-row" class="slider-row">
                 <label for="wpm-slider">WPM: <span id="wpm-value">300</span></label>
                 <input id="wpm-slider" type="range" min="100" max="1000" step="10" value="300" />
             </div>
-            <div class="slider-row">
+            <div id="chunk-row" class="slider-row">
                 <label for="chunk-slider">Palavras por vez: <span id="chunk-value">1</span></label>
                 <input id="chunk-slider" type="range" min="1" max="4" step="1" value="1" />
+            </div>
+            <div id="tts-settings" class="tts-settings" hidden>
+                <div class="slider-row tts-voice-row">
+                    <label for="tts-voice">Voz do narrador</label>
+                    <select id="tts-voice" aria-describedby="tts-status">
+                        <option value="pf_dora" lang="pt-BR">Dora — Português (Brasil) · voz feminina</option>
+                    </select>
+                </div>
+                <div class="slider-row">
+                    <label for="tts-rate-slider">
+                        Velocidade do áudio: <span id="tts-rate-value">1.0x</span>
+                        <span class="tts-wpm-badge">≈ <span id="tts-effective-wpm">—</span> WPM</span>
+                    </label>
+                    <input id="tts-rate-slider" type="range" min="0.5" max="4" step="0.1" value="1.0" />
+                </div>
+                <div class="slider-row">
+                    <label for="tts-buffer-slider">Buffer antecipado: <span id="tts-buffer-value">60s</span></label>
+                    <input id="tts-buffer-slider" type="range" min="30" max="120" step="15" value="60" />
+                    <span id="tts-buffer-status" class="tts-buffer-status">Preparado sob demanda</span>
+                </div>
             </div>
             <div class="slider-row">
                 <label for="font-slider">Tamanho da fonte: <span id="font-value">48</span>px</label>

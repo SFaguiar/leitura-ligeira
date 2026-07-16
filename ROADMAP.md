@@ -353,12 +353,11 @@ GET        /documents/{id}/audio/{voice} # stream do áudio
 
 ---
 
-## Questões em aberto (fechar antes das fases que dependem delas)
+## Questões arquiteturais resolvidas
 
-Para a **Fase 8 (TTS)**:
-1. Como obter timestamps por palavra (forced alignment com Whisper na GPU vs
-   saída do Piper vs estimativa proporcional) — avaliar quando chegar.
-
+A Fase 8 não possui mais questões arquiteturais abertas. A estratégia final
+combina timestamps do Kokoro, alinhamento fuzzy e reparação proporcional pela
+duração real do MP3 quando a cobertura é parcial (`timestamps:null`).
 *(As questões nº 1–5 da rodada anterior sobre contas/permissões/opt-out/
 prateleiras foram todas fechadas em 2026-07-12 — ver "Registro de decisões"
 acima e as fases 4/5 abaixo.)*
@@ -369,36 +368,17 @@ acima e as fases 4/5 abaixo.)*
 
 **Correção Arquitetural do Modo Fluxo (Decidido em 2026-07-13 após Fase 6) —
 IMPLEMENTADA E TESTADA ao vivo em 2026-07-13:**
-**Problema:** `buildFlowContent()` travava a tela por ~7s em livros grandes (ex: EPUB de 146k palavras) ao criar centenas de milhares de `<span>` síncronos.
-**Solução: Lazy Spanification (Virtualização Híbrida)**
-- Em vez de gerar spans para cada palavra do livro inteiro de uma vez, `buildFlowContent` divide os tokens em parágrafos e cria apenas as `<div>` contendo texto plano (`div.textContent = ...`). Isso é quase instantâneo e constrói o documento inteiro no DOM, garantindo que a barra de rolagem funcione com a altura real.
-- Quando o motor precisa acender a palavra atual em `updateFlowHighlight`, ele encontra o parágrafo daquele token (busca binária por `startIdx`). Se ainda não foi spanificado, força a spanification na hora. O highlight acessa o span diretamente via `div.children[tokenIndex - paragraphStartIndex]`.
-- Isso zera o travamento inicial, não polui a memória desnecessariamente, preserva a busca nativa (Ctrl+F) e evita a complexidade matemática infernal de calcular alturas dinâmicas para uma "Janela Virtual" tradicional.
+**Problema original:** `buildFlowContent()` travava a tela por ~7s em livros grandes (ex: EPUB de 146k palavras) ao criar centenas de milhares de `<span>` síncronos.
+**Solução Atual: Lazy Spanification (Virtualização Híbrida)**
+- Em vez de gerar spans para cada palavra do livro inteiro de uma vez, divide-se os tokens em parágrafos e cria-se `<div>` de texto plano.
+- Quando a palavra acende (`updateFlowHighlight`), encontra-se a unidade por busca binária e "spanifica" na hora.
 
-**Desvio do plano original, decidido pelo Claude durante a implementação:**
-o gatilho de spanificação **não é `IntersectionObserver`** como o plano
-especificava — é um handler de `scroll` com busca binária em `offsetTop`
-(uma tela de margem acima/abaixo do que está visível). Motivo: testado ao
-vivo, `IntersectionObserver` **não disparava nenhuma vez** no navegador de
-teste usado pra validação (confirmado isolando com um observer simples,
-raiz padrão, sem nenhuma opção customizada — nem esse disparou). Como a
-regra de trabalho é nunca declarar algo pronto sem verificar ao vivo, e o
-observer não pôde ser verificado, foi trocado por um mecanismo equivalente
-que pôde ser testado de ponta a ponta. Resultado idêntico (lazy, sem
-travamento, scroll/Ctrl+F nativos preservados) — só o gatilho mudou.
-`IntersectionObserver` deve funcionar normalmente em navegadores reais
-(Chrome/Safari); se um dia isso for revisitado, vale testar no celular
-real antes de reverter pro observer.
-
-**Testado ao vivo (2026-07-13), com o mesmo EPUB de 146.502 palavras:**
-entrar no Fluxo caiu de ~6.600ms para ~102-235ms (só o parágrafo visível +
-margem fica com spans; o resto continua texto plano). Confirmado: scroll
-spanifica parágrafos novos sob demanda; clique-pra-pular funciona; salto
-de TOC pra um capítulo a 134 mil palavras de distância força a
-spanificação daquele parágrafo específico e acende a palavra certa;
-destaque de leitura durante o play segue corretamente; documento pequeno
-(Sussus, 338 palavras) sem regressão — todos os parágrafos spanificam ao
-rolar até eles. Zero erro no console.
+**ATUALIZAÇÃO DE HARDENING (Auditoria de Segunda Opinião):**
+A arquitetura base é correta, mas a implementação de 2026-07-13 requer os seguintes ajustes críticos (que devem ser feitos antes de avançar nas fases ou na Fase 8):
+1. **Unidade Limitada (Segmento, não Parágrafo):** "Parágrafo" não tem limite de tamanho em arquivos patológicos (ex: PDF sem quebras). Mudar de `flowParagraphs` para `flowBlocks` limitando a um máximo de ~250 tokens, quebrando preferencialmente no `sentenceEnd`. Se uma unidade tiver 100k palavras, a spanificação travará a thread novamente.
+2. **Proteção contra Layout Thrashing no Scroll:** O Claude Code usou um listener de scroll síncrono lendo `offsetTop`. Isso intercala leitura/escrita no DOM em todo frame, causando Layout Thrashing em mobile. **Obrigatório:** Coalescer o evento (`requestAnimationFrame`), determinar quais blocos estão visíveis sem tocar no DOM, e spanificar usando `DocumentFragment` com uma única mutação por bloco.
+3. **Limpeza de Estado (Memory Leak mitigado):** Mudar para outro documento não destrói o DOM do Fluxo anterior se não for explícito. Deve-se resetar tudo (`flowFollowMode`, `scrollTop`, esvaziar arrays) ao carregar novo texto.
+4. **Resumo:** Não tentar virtualização profunda agora, mas aplicar limite máximo por segmento e proteção síncrona no scroll.
 
 *(As questões nº 1–5 da rodada anterior sobre contas/permissões/opt-out/
 prateleiras foram todas fechadas em 2026-07-12 — ver "Registro de decisões"
@@ -889,7 +869,7 @@ DOM). Aguardando deliberação do Antigravity antes de qualquer correção.
 
 Nenhum código commitado ainda — aguardando teste e autorização do usuário.
 
-#### [x] Fase 7 — Pastas, busca e prateleiras na biblioteca *(implementada 2026-07-13, aguardando teste do usuário)*
+#### [x] Fase 7 — Pastas, busca e prateleiras na biblioteca *(implementada 2026-07-13; hardening validado automaticamente 2026-07-14)*
 *Depende de: Fase 5 (`reading_progress.status`); faz mais sentido após a
 Fase 6 encher a biblioteca. Plano fechado via deliberação autônoma.*
 
@@ -967,24 +947,145 @@ leitor direto. Zero erro no console. Dados de teste revertidos após
 validar. Nenhum código commitado ainda — aguardando teste e autorização
 do usuário.
 
-#### [ ] Fase 8 — TTS sincronizado (nos dois modos)
-*Depende de: Fase 3 (substrato/modos), idealmente Fase 6 (conteúdo real).
-Consolida geração + sincronização numa fase só — "fechar toda a questão do
-TTS de uma vez".*
-- **Geração:** Kokoro-82M via Kokoro-FastAPI (Docker, rede do stack de IA,
-  RTX 5060 Ti). Cache por `(document_id, voice)` — biblioteca compartilhada
-  gera uma vez, todos reaproveitam. Auto-detecção de idioma (`langdetect`)
-  para voz padrão PT-BR/EN; troca manual por documento. Sem fila (sequencial,
-  escala doméstica). Tabela `generated_audio`.
-- **Sincronização por palavra:** timestamps cacheados junto do áudio (método
-  = questão aberta nº 1, acima). **Flow:** karaoke no texto (marca segue a fala).
-  **Focus:** flash guiado pelo relógio do áudio (não pelo timer de WPM — a
-  prosódia não casa com ritmo fixo).
-- O relógio do highlight já é plugável desde a Fase 3 — aqui só troca a
-  fonte de tempo.
-- Stretch posterior (fase própria se necessário): Chatterbox-Turbo (MIT)
-  como segunda engine para inglês mais natural — só depois do Kokoro rodar
-  de ponta a ponta.
+**Auditoria de hardening (2026-07-14):** revisão posterior confirmou que
+`create_document`, `list_documents`, `get_document`, `update_document` e
+`delete_document` fecham toda conexão de `get_connection()` em `finally`,
+inclusive nos caminhos 403/404 e em exceção SQL. Um banco temporário verificou
+`busy_timeout=5000`, `foreign_keys=ON`, escape literal de `%`/`_`/`\`, PATCH
+de coleção e cinco conexões rastreadas sem vazamento.
+
+No frontend, `fetchLibrary()` ganhou `AbortController` + request ID monotônico;
+uma busca nova invalida a anterior já no primeiro `input`, antes do debounce.
+Teste adversarial A-lenta/B-rápida confirmou que B permanece na tela mesmo se
+A concluir por último ou durante os 300ms. O filtro de coleção agora zera um
+valor que desapareceu dos resultados, e logout/401 limpa requests, filtros e
+DOM da biblioteca antes de outro perfil entrar.
+
+`openLibraryDocument(doc)` centraliza a proteção de abandonados consultando o
+status atual. Testes dos cinco contextos de prateleira produziram cinco aberturas
+do modal e zero abertura direta; os predicados mantêm abandonados somente em
+“Todos” e “Abandonado”. Toolbar, tabs e cards receberam acabamento responsivo
+Vanilla CSS, alvos touch, foco visível, semântica ARIA e navegação por teclado.
+O navegador embutido não estava disponível nesta auditoria; o layout passou por
+validação estrutural/estática e mantém como passo final recomendado a inspeção
+visual em Chrome/Android antes do commit.
+
+#### [x] Fase 8 — TTS sincronizado (nos dois modos) *(encerrada e aceita pelo usuário em 2026-07-16)*
+*Depende de: Fase 3 (substrato/modos) e Fase 6 (conteúdo real). Plano reaberto e revisado após segunda opinião (2026-07-13).*
+
+**Resumo executivo:** Implementa Text-to-Speech (TTS) guiando o RSVP (o motor descarta o WPM interno e atrela `engine.pointer` aos timestamps do áudio). A arquitetura é desenhada em torno de "blocos canônicos" limitados, com validação de qualidade de alinhamento e endpoints assíncronos que evitam travar o SQLite.
+
+**Schema e DB (`database.py` e `schemas.py`):**
+- Nova tabela `tts_blocks`: `id`, `document_id`, `start_token`, `end_token`, `voice`, `model_version`, `audio_path`, `timestamps_json`, `alignment_score`. Com constraint `UNIQUE (document_id, start_token, voice, model_version)`.
+- Reutilizar `documents.lang` como sugestão; **não** adicionar `langdetect` nem `detected_language`.
+
+**Geração e Integração Backend (`Kokoro-FastAPI`):**
+- O bloco gerador não obedece cegamente ao `token` pedido: o backend determina um "Bloco Canônico" (ex: max 250 palavras, quebrando no `sentenceEnd`).
+- Novo endpoint `POST /documents/{id}/tts/blocks`:
+  - Recebe `{ "token": X, "voice": Y }`. Idempotente (devolve metadados se o bloco canônico já existir).
+  - **Transação Curta:** Fechar conexão SQLite antes de chamar a GPU (Kokoro). Usar Lock em memória por chave única para impedir gerações duplicadas simultâneas.
+  - Gravar áudio como `.part` e renomear atomicamente.
+  - **Score de Alinhamento:** O script de alinhamento fuzzy (offset de não-brancos) deve calcular um `alignment_score` (% de cobertura) e validar a monotonicidade. Salvar no DB.
+- Novo endpoint `GET /documents/{document_id}/tts/blocks/{block_id}/audio`: Autenticado, para servir o arquivo real. Não servir via StaticFiles!
+
+**Frontend: Arquitetura TTS Separada (`tts.js` e `app.js`):**
+- Não poluir `rsvp.js`. O `rsvp.js` ganha apenas `syncToIndex(idx)` que não toca timers, só desenha. O loop de `requestAnimationFrame` mora no `tts.js`.
+- O chunk visual do RSVP é forçado para 1 (`chunkSize=1`) durante o TTS.
+- O ping-pong gapless com 2 `<audio>` foi adiado no MVP de 2026-07-13; os testes reais em 4x justificaram reabrir a decisão e o hardening de 2026-07-14 implementou o par ativo/standby.
+- O **prefetch** do próximo bloco ocorrerá assim que o áudio atual *começar* a tocar (e não aos 80%, para garantir que o tempo longo da GPU + rede não crie vácuo).
+- A sincronização lê `audio.currentTime` e faz busca binária nos `timestamps` locais do bloco. Atualiza a engine apenas se o `idx` mudar, evitando `rerender()` 60x por segundo.
+- **Seeks Arbitrários:** Pular na timeline (TOC, scrubber) paralisa o áudio atual e obriga `tts.js` a pedir o bloco do novo token, resetar o `currentTime` local ao timestamp daquele token no novo bloco, e só então dar play.
+
+**Implementação e hardening (2026-07-14):** a barra do leitor recebeu toggle
+acessível “Ativar Narrador”, seletor dinâmico de voz, taxa 0.5–4.0x, WPM
+efetivo e buffer configurável de 30–120s. WPM e chunk mecânicos ficam ocultos
+durante TTS; o motor visual é
+forçado a uma palavra e o chunk salvo do modo volta ao desativar. Voz e taxa
+persistem localmente sem ampliar o schema de conta. O layout é Vanilla CSS,
+mobile-first, com alvo touch, foco visível, spinner de buffering e
+`prefers-reduced-motion`.
+
+`app.js` agora coordena os dois relógios: espaço/botão alternam o driver TTS
+quando ativo; TOC, scrubber, rewind/forward e clique no Fluxo convergem em
+`navigateToToken()` e usam `ttsDriver.seek()`. Heartbeat, sessão, autosave e
+Wake Lock reconhecem áudio tocando; `avg_wpm` fica nulo em sessão narrada.
+Troca de documento, biblioteca, logout e 401 fazem reset forte do driver.
+Carregamento de documento e descoberta de vozes têm request IDs para impedir
+publicação tardia após troca de tela/perfil.
+
+O driver ganhou estado explícito de loading, gerações monotônicas,
+`AbortController`, cancelamento de metadata, limpeza dos dois áudios/fila e
+guarda inclusive contra Promise tardia de `audio.play()`. `reset()` solta
+engine/API/doc/callbacks; `stop()` mantém o contexto somente para reativação no
+mesmo documento. A fronteira canônica foi corrigida de 260 para 250 e a versão
+de cache passou a `kokoro-82m-b250-r2`, impedindo reutilização de blocos antigos
+incompatíveis.
+
+**Validação:** `node --check` passou em `app.js`, `rsvp.js` e `tts.js`;
+`compileall` passou no backend. Em 100.000 tokens patológicos, a segmentação
+produziu 400 blocos com máximo exato de 250. Harness assíncrono confirmou
+cancelamento após stop, latest-seek-wins, clamps de taxa, pausa de play tardio
+e liberação de referências no reset. Smoke FastAPI em banco temporário cobriu
+autenticação de vozes, geração dos blocos `[0,250)`/`[250,500)` e GET do MP3
+autenticado, com Kokoro substituído por resposta determinística somente no
+processo isolado. Parser HTML confirmou 93 IDs únicos, zero referência JS
+ausente e CSS balanceado. Nenhum dado do `data/app.db` real foi criado ou
+alterado pelos testes. O navegador embutido não estava disponível; inspeção
+visual e áudio com o Kokoro real permanecem como validação do usuário antes do
+commit.
+
+**Correção pós-teste real (2026-07-14):** ao ligar o narrador, o backend
+retornou `WinError 10061`: a UI estava integrada, mas não existia Kokoro na
+porta 8880 e o `docker-compose.yml` ainda continha somente o comentário do
+planejamento antigo. Foi adicionado o serviço oficial Kokoro-FastAPI
+`v0.6.0-cu128`, adequado à RTX 5060 Ti/Blackwell, limitado a
+`127.0.0.1:8880`, com GPU, restart e healthcheck; o app em Compose espera o
+serviço saudável e usa `http://tts:8880`. A lista de vozes v0.6 usa objetos
+`{id,name}` e agora é normalizada mantendo compatibilidade com listas antigas.
+
+O primeiro teste real revelou ainda que `/dev/captioned_speech` v0.6 assume
+NDJSON streaming; a correção inicial enviou `stream:false`. Validação real:
+modelo aquecido em CUDA 12.8, 68 vozes, `pf_dora`/`pm_alex`/`pm_santa`, frase
+com 47.661 bytes e 8 timestamps. Pelo endpoint completo, em banco temporário:
+alinhamento 1.0, 9 timestamps e MP3 autenticado de 49.965 bytes. O Uvicorn foi
+reiniciado e voltou com HTTP 200. Falha de conexão agora vira 503 legível em
+vez de expor o `WinError` bruto.
+
+**Hardening pós-uso em 4x (2026-07-14):** o usuário confirmou a sincronização,
+mas encontrou dois defeitos reais: ao terminar o arquivo do bloco, o navegador
+restaurava `playbackRate` para 1x apesar do slider permanecer em 2x; depois, um
+bloco português retornou HTTP 500. Os logs provaram que os sete fragmentos de
+áudio tinham sido sintetizados e a falha ocorria somente em
+`AudioChunk.combine()`, ao executar `list += None` para um fragmento sem
+timestamps. Não houve OOM, restart nem falha CUDA.
+
+O cliente agora consome `stream:true` e agrega NDJSON/MP3/timestamps com limites
+estritos, ignorando `timestamps:null`; se o endpoint experimental falhar, usa
+`/v1/audio/speech` e o frontend deriva timings monotônicos pela duração real.
+Texto tem NFC/controle/teto de 4.000 caracteres, voz usa allowlist, respostas
+têm limites, timeouts são separados, retries são classificados, há circuit
+breaker e `BoundedSemaphore(1)` para a GPU. Compose usa digest cu128 imutável,
+`/health`, superfície reduzida e rotação de logs.
+
+No frontend, `_rate` é canônico e alimenta `defaultPlaybackRate` e
+`playbackRate` após metadata e antes de todo play. Dois `<audio>` alternam
+ativo/standby; uma fila sequencial de até oito blocos mantém 30–120 segundos de
+antecedência (60s padrão). A UI exibe simultaneamente taxa e WPM efetivo
+calculado pela duração dos últimos três blocos. Harness reproduziu reset para
+1x e confirmou 4x após rollover; em 4x/60s, três blocos foram pedidos com
+concorrência máxima 1. Kokoro real gerou 2.006.445 bytes/297 timestamps para
+texto português longo; endpoint FastAPI real retornou 200 e voz hostil foi
+barrada com 422 antes da GPU. O contêiner terminou healthy, sem OOM/restart.
+
+**Encerramento final (2026-07-16):** após uso real, o relógio visual passou a
+rejeitar timelines estruturalmente inválidas, cobertura inferior a 85%, séries
+longas de timestamps com duração zero ou divergência superior a 8% da duração
+do MP3. Nesses casos, reconstrói timings monotônicos ponderados pela palavra e
+pelas pausas de sentença, eliminando o congelamento do Foco enquanto o áudio
+continua. O seletor agrupa as 68 vozes por idioma e mostra nome, variante
+regional, gênero vocal e indicação de modelo anterior, sem alterar os IDs
+usados pela API/cache. O usuário confirmou TTS funcional e sincronizado; Fase 8
+fica fechada, sem pendências bloqueantes.
 
 #### [ ] Fase 9 — Dashboard de estatísticas (eu × casa)
 *Depende de: Fase 5 (sessões acumuladas — quanto antes a 5 entrar, mais

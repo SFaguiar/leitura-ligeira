@@ -50,6 +50,23 @@ Abra `http://localhost:8000` no PC, ou `http://<IP-do-PC-na-rede>:8000` no
 celular (mesma rede Wi-Fi). Descubra o IP com `ipconfig` (Windows) /
 `ip addr` (Linux).
 
+### Narrador local (Kokoro)
+
+O backend precisa do Kokoro-FastAPI ouvindo em `127.0.0.1:8880`. Nesta máquina
+(RTX 5060 Ti), o Compose usa a imagem oficial CUDA 12.8 fixada na versão 0.6.0:
+
+```bash
+docker compose up -d tts
+```
+
+Espere `http://localhost:8880/health` responder antes de ligar o narrador. O
+primeiro start baixa uma imagem grande e pode levar alguns minutos. No leitor,
+a taxa vai de 0.5x a 4.0x, o WPM efetivo permanece visível e o buffer antecipado
+pode ser ajustado de 30 a 120 segundos (60s por padrão).
+Quem roda o FastAPI nativamente não precisa configurar variável alguma; o
+default já é `http://localhost:8880`. Dentro do Compose, `KOKORO_URL` é definido
+como `http://tts:8880` automaticamente.
+
 ## Rodando com Docker Compose
 
 ```bash

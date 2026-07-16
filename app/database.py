@@ -64,6 +64,24 @@ CREATE TABLE IF NOT EXISTS reading_sessions (
     words_advanced INTEGER,
     avg_wpm REAL
 );
+
+-- Fase 8: generated TTS audio + word timings, cached per canonical block.
+-- One row per (document, block-start, voice, model) — the UNIQUE key makes
+-- POST /tts/blocks idempotent. audio_path is a filename under data/tts/;
+-- timestamps_json is a list of {idx, start, end} keyed by GLOBAL token index.
+CREATE TABLE IF NOT EXISTS tts_blocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    start_token INTEGER NOT NULL,
+    end_token INTEGER NOT NULL,
+    voice TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    audio_path TEXT NOT NULL,
+    timestamps_json TEXT NOT NULL,
+    alignment_score REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE (document_id, start_token, voice, model_version)
+);
 """
 
 # Columns added after the initial release — each gets a migration entry so
