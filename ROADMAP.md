@@ -1087,7 +1087,7 @@ regional, gênero vocal e indicação de modelo anterior, sem alterar os IDs
 usados pela API/cache. O usuário confirmou TTS funcional e sincronizado; Fase 8
 fica fechada, sem pendências bloqueantes.
 
-#### [ ] Fase 9 — Dashboard de estatísticas (eu × casa)
+#### [x] Fase 9 — Dashboard de estatísticas (eu × casa) *(encerrada em 2026-07-16)*
 *Depende de: Fase 5 (sessões acumuladas — quanto antes a 5 entrar, mais
 histórico o dashboard terá no lançamento).*
 - WPM médio ao longo do tempo, palavras/dia, tempo total, streaks, taxa de
@@ -1095,6 +1095,21 @@ histórico o dashboard terá no lançamento).*
   (Focus vs Flow) e por documento.
 - Respeita `collect_stats` (quem desligou não aparece).
 - Reverte o non-goal original "no long-term statistics dashboards".
+
+**Implementação encerrada em 2026-07-16:**
+- `GET /stats/dashboard` aceita escopo `me|house` e períodos de 7/30/90/365
+  dias ou histórico completo. WPM é ponderado por palavras; sessões TTS sem
+  WPM não distorcem a média; rewinds negativos e durações inválidas são
+  limitados a zero.
+- A visão Casa soma somente perfis com `collect_stats=1`. Totais podem
+  incorporar atividade privada consentida, mas títulos privados nunca saem
+  no ranking de documentos.
+- Painel responsivo em Vanilla HTML/CSS/JS com resumo, gráfico diário SVG,
+  comparativo Foco/Fluxo, documentos em destaque, seletor de período e
+  controle de consentimento. Fetches concorrentes são cancelados por
+  `AbortController`.
+- Validação: 10 testes `unittest`, harness TTS, `compileall`,
+  `node --check` e `git diff --check`.
 
 #### [ ] Fase 10 — Teste de velocidade/compreensão embutido
 *Depende de: Fase 5 (grava resultado como dado de desempenho).*
@@ -1112,6 +1127,11 @@ estável.*
 - Overlay de atalhos (Shift+?), refinamento de tema/contraste, web manifest
   (ícone+nome), mDNS via Avahi (`reader.local`) com fallback de IP estático
   documentado (mDNS no Android é inconsistente — testar nos aparelhos reais).
+- [x] **Fundação visual antecipada em 2026-07-16:** identidade editorial de
+  biblioteca em CSS puro (papel, madeira, verde e latão), componentes
+  responsivos, temas claro/escuro, estados de foco consistentes e perfis
+  acessíveis por teclado. Permanecem pendentes overlay de atalhos, manifest e
+  descoberta mDNS; por isso a Fase 12 continua aberta.
 
 #### [ ] Fase 13 — Administração de contas (self-service) — **NÃO PLANEJADA, precisa deliberação**
 *Depende de: uso real acumulado das Fases 4-9 (padrões de conta, permissão e

@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import init_db
-from app.routers import documents, import_routes, progress, sessions, tts_routes, users
+from app.routers import documents, import_routes, progress, sessions, stats, tts_routes, users
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -39,6 +39,7 @@ app.include_router(documents.router)
 app.include_router(import_routes.router)
 app.include_router(progress.router)
 app.include_router(sessions.router)
+app.include_router(stats.router)
 app.include_router(tts_routes.router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

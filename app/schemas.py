@@ -122,6 +122,53 @@ class SessionUpdate(BaseModel):
     avg_wpm: float | None = None
 
 
+class StatsSummary(BaseModel):
+    words: int
+    reading_seconds: int
+    sessions: int
+    avg_wpm: float | None
+    streak_days: int
+    completion_rate: float
+    completed_documents: int
+    engaged_documents: int
+
+
+class StatsDailyPoint(BaseModel):
+    date: str
+    words: int
+    reading_seconds: int
+    sessions: int
+
+
+class StatsModeBreakdown(BaseModel):
+    mode: str
+    words: int
+    reading_seconds: int
+    sessions: int
+    avg_wpm: float | None
+
+
+class StatsDocumentBreakdown(BaseModel):
+    document_id: int
+    title: str
+    words: int
+    reading_seconds: int
+    sessions: int
+    avg_wpm: float | None
+
+
+class StatsDashboard(BaseModel):
+    scope: str
+    period_days: int | None
+    generated_at: str
+    collecting: bool
+    participants: int
+    summary: StatsSummary
+    daily: list[StatsDailyPoint]
+    modes: list[StatsModeBreakdown]
+    documents: list[StatsDocumentBreakdown]
+
+
 class TtsBlockRequest(BaseModel):
     token: int = 0
     voice: str | None = None

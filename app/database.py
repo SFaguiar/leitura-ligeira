@@ -120,6 +120,9 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_reading_sessions_user_doc ON reading_sessions(user_id, document_id)"
         )
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(documents)")}
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reading_sessions_user_started ON reading_sessions(user_id, started_at)"
+        )
         for column_name, migration_sql in MIGRATIONS:
             if column_name not in columns:
                 conn.execute(migration_sql)

@@ -8,7 +8,13 @@
 </head>
 <body>
 <header class="topbar">
-    <h1 class="brand">Leitura Ligeira</h1>
+    <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">LL</span>
+        <div>
+            <h1 class="brand">Leitura Ligeira</h1>
+            <span class="brand-tagline">Sua biblioteca de leitura atenta</span>
+        </div>
+    </div>
     <div class="topbar-actions">
         <span id="current-user-name" class="current-user-name" hidden></span>
         <button id="logout-btn" class="btn" title="Sair" hidden>Sair</button>
@@ -17,7 +23,11 @@
 </header>
 
 <main id="login-view" class="view">
+    <div class="welcome-copy">
+        <p class="section-eyebrow">Bem-vindo &agrave; biblioteca</p>
     <h2>Quem está lendo?</h2>
+        <p>Escolha seu perfil e retome seu momento de leitura.</p>
+    </div>
     <ul id="profile-list" class="profile-list"></ul>
     <button id="new-profile-btn" class="btn btn-primary">+ Novo perfil</button>
 </main>
@@ -51,8 +61,14 @@
 </div>
 
 <main id="library-view" class="view" hidden>
+    <div class="view-heading">
+        <div><p class="section-eyebrow">Sua estante pessoal</p><h2>Biblioteca</h2></div>
+        <p>Encontre uma leitura, organize suas cole&ccedil;&otilde;es ou comece algo novo.</p>
+    </div>
+
     <div class="library-actions">
         <button id="new-doc-btn" class="btn btn-primary">+ Novo texto</button>
+        <button id="stats-btn" class="btn">Estat&iacute;sticas</button>
     </div>
     <div class="library-toolbar" role="search" aria-label="Buscar e filtrar biblioteca">
         <input id="library-search" class="library-search" type="search" placeholder="Buscar por título ou conteúdo..." aria-label="Buscar por título ou conteúdo" autocomplete="off" />
@@ -71,6 +87,70 @@
     <p id="library-empty" class="empty-hint" hidden>Nenhum texto ainda. Cole um texto para começar.</p>
 </main>
 
+<main id="dashboard-view" class="view dashboard-view" hidden>
+    <div class="dashboard-topbar">
+        <button id="dashboard-back-btn" class="icon-btn" type="button" title="Voltar a biblioteca">&larr;</button>
+        <div>
+            <p class="dashboard-eyebrow">Seu hist&oacute;rico em perspectiva</p>
+            <h2>Estat&iacute;sticas de leitura</h2>
+        </div>
+    </div>
+
+    <section class="stats-controls" aria-label="Filtros das estat&iacute;sticas">
+        <div class="stats-scope" role="group" aria-label="Escopo">
+            <button class="btn active" type="button" data-stats-scope="me" aria-pressed="true">Meu ritmo</button>
+            <button class="btn" type="button" data-stats-scope="house" aria-pressed="false">Casa</button>
+        </div>
+        <label class="stats-period-label" for="stats-period">
+            Per&iacute;odo
+            <select id="stats-period">
+                <option value="7">7 dias</option>
+                <option value="30" selected>30 dias</option>
+                <option value="90">90 dias</option>
+                <option value="365">1 ano</option>
+                <option value="0">Todo o hist&oacute;rico</option>
+            </select>
+        </label>
+        <label class="stats-consent">
+            <input id="stats-collect" type="checkbox" />
+            Participar das estatisticas
+        </label>
+    </section>
+    <p id="stats-privacy-note" class="stats-privacy-note"></p>
+    <p id="stats-error" class="error-text stats-error" role="alert" hidden></p>
+    <p id="stats-loading" class="stats-loading" role="status" hidden>Calculando seu ritmo...</p>
+
+    <div id="stats-content">
+        <section class="stats-summary-grid" aria-label="Resumo">
+            <article class="stat-card"><span>Palavras</span><strong id="stats-words">0</strong></article>
+            <article class="stat-card"><span>Tempo de leitura</span><strong id="stats-time">0 min</strong></article>
+            <article class="stat-card"><span>Velocidade m&eacute;dia</span><strong id="stats-wpm">--</strong></article>
+            <article class="stat-card"><span>Sequ&ecirc;ncia atual</span><strong id="stats-streak">0 dias</strong></article>
+            <article class="stat-card"><span>Conclus&atilde;o geral</span><strong id="stats-completion">0%</strong></article>
+            <article class="stat-card"><span>Sess&otilde;es</span><strong id="stats-sessions">0</strong></article>
+        </section>
+
+        <section class="stats-panel">
+            <div class="stats-panel-heading">
+                <div><p class="dashboard-eyebrow">Consist&ecirc;ncia</p><h3>Palavras por dia</h3></div>
+                <span id="stats-chart-caption" class="stats-caption"></span>
+            </div>
+            <svg id="stats-daily-chart" class="stats-chart" viewBox="0 0 720 220" role="img" aria-label="Grafico de palavras lidas por dia"></svg>
+            <p id="stats-chart-empty" class="empty-hint" hidden>Nenhuma leitura registrada neste per&iacute;odo.</p>
+        </section>
+
+        <div class="stats-detail-grid">
+            <section class="stats-panel">
+                <div class="stats-panel-heading"><h3>Por modo</h3></div>
+                <div id="stats-modes" class="stats-modes"></div>
+            </section>
+            <section class="stats-panel">
+                <div class="stats-panel-heading"><h3>Documentos em destaque</h3></div>
+                <ol id="stats-documents" class="stats-documents"></ol>
+            </section>
+        </div>
+    </div>
+</main>
 <div id="abandoned-modal" class="modal" hidden>
     <div class="modal-card">
         <h2>Retomar este documento?</h2>

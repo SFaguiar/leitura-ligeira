@@ -2,6 +2,27 @@ import { RSVPEngine, computeOrpIndex } from "./rsvp.js";
 import { TTSDriver, describeVoice } from "./tts.js";
 
 const libraryView = document.getElementById("library-view");
+const dashboardView = document.getElementById("dashboard-view");
+const statsBtn = document.getElementById("stats-btn");
+const dashboardBackBtn = document.getElementById("dashboard-back-btn");
+const statsScopeButtons = document.querySelectorAll("[data-stats-scope]");
+const statsPeriod = document.getElementById("stats-period");
+const statsCollect = document.getElementById("stats-collect");
+const statsPrivacyNote = document.getElementById("stats-privacy-note");
+const statsError = document.getElementById("stats-error");
+const statsLoading = document.getElementById("stats-loading");
+const statsContent = document.getElementById("stats-content");
+const statsWords = document.getElementById("stats-words");
+const statsTime = document.getElementById("stats-time");
+const statsWpm = document.getElementById("stats-wpm");
+const statsStreak = document.getElementById("stats-streak");
+const statsCompletion = document.getElementById("stats-completion");
+const statsSessions = document.getElementById("stats-sessions");
+const statsChartCaption = document.getElementById("stats-chart-caption");
+const statsDailyChart = document.getElementById("stats-daily-chart");
+const statsChartEmpty = document.getElementById("stats-chart-empty");
+const statsModes = document.getElementById("stats-modes");
+const statsDocuments = document.getElementById("stats-documents");
 const readerView = document.getElementById("reader-view");
 const documentList = document.getElementById("document-list");
 const libraryEmpty = document.getElementById("library-empty");
@@ -134,6 +155,7 @@ const SETTINGS_TYPES = {
     orpEnabled: "boolean",
     navSnapBackOnClick: "boolean",
     navPauseOnSwitch: "boolean",
+    collectStats: "boolean",
     ttsVoice: "string",
     ttsRate: "number",
     ttsBufferSeconds: "number",
@@ -149,6 +171,7 @@ const SETTINGS_DEFAULTS = {
     orpEnabled: false,
     navSnapBackOnClick: false,
     navPauseOnSwitch: false,
+    collectStats: true,
     ttsVoice: "pf_dora",
     ttsRate: 1,
     ttsBufferSeconds: 60,
@@ -169,6 +192,7 @@ const SETTINGS_SERVER_KEYS = {
     orpEnabled: "orp_enabled",
     navSnapBackOnClick: "nav_snap_back_on_click",
     navPauseOnSwitch: "nav_pause_on_switch",
+    collectStats: "collect_stats",
 };
 
 function getSetting(key) {
@@ -233,6 +257,7 @@ function applyServerSettings(s) {
     localStorage.setItem(SETTINGS_PREFIX + "orpEnabled", s.orp_enabled ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "navSnapBackOnClick", s.nav_snap_back_on_click ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "navPauseOnSwitch", s.nav_pause_on_switch ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "collectStats", s.collect_stats ? "1" : "0");
 }
 
 function modeKey(base) {
@@ -281,6 +306,7 @@ function showLogin() {
     // showLibrary(); discard any queued Flow work and document DOM here too.
     readerRequestId += 1;
     resetLibraryState();
+    cancelStatsRequest();
     stopTtsForLifecycle();
     engine.pause();
     releaseWakeLock();
@@ -292,6 +318,7 @@ function showLogin() {
     readerView.hidden = true;
     libraryView.hidden = true;
     loginView.hidden = false;
+    dashboardView.hidden = true;
     currentUserName.hidden = true;
     logoutBtn.hidden = true;
     loadProfileList();
@@ -305,6 +332,15 @@ async function loadProfileList() {
         const li = document.createElement("li");
         li.textContent = u.name;
         li.addEventListener("click", () => openLoginModal(u.name));
+        li.dataset.initial = u.name.trim().charAt(0).toUpperCase() || "?";
+        li.setAttribute("role", "button");
+        li.tabIndex = 0;
+        li.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openLoginModal(u.name);
+            }
+        });
         profileList.appendChild(li);
     });
 }
@@ -1540,12 +1576,255 @@ function resetSessionState() {
     currentSessionId = null;
 }
 
+// ---- Statistics dashboard (Fase 9) ----
+let statsScope = "me";
+let statsRequestId = 0;
+let statsAbortController = null;
+
+function cancelStatsRequest() {
+    statsRequestId += 1;
+    if (statsAbortController) statsAbortController.abort();
+    statsAbortController = null;
+}
+
+function formatStatNumber(value) {
+    return new Intl.NumberFormat("pt-BR").format(value || 0);
+}
+
+function formatReadingTime(seconds) {
+    const minutes = Math.round((seconds || 0) / 60);
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder ? `${hours}h ${remainder}min` : `${hours}h`;
+}
+
+function expandDailySeries(data) {
+    const values = new Map(data.daily.map((point) => [point.date, point.words]));
+    if (!data.daily.length && !data.period_days) return [];
+    const end = new Date(`${data.generated_at.slice(0, 10)}T00:00:00Z`);
+    let start;
+    if (data.period_days) {
+        start = new Date(end);
+        start.setUTCDate(start.getUTCDate() - data.period_days + 1);
+    } else {
+        start = new Date(`${data.daily[0].date}T00:00:00Z`);
+    }
+    const series = [];
+    for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        const key = cursor.toISOString().slice(0, 10);
+        series.push({ date: key, words: values.get(key) || 0 });
+    }
+    return series;
+}
+
+function renderDailyChart(data) {
+    const series = expandDailySeries(data);
+    statsDailyChart.textContent = "";
+    statsChartEmpty.hidden = series.some((point) => point.words > 0);
+    statsDailyChart.hidden = !statsChartEmpty.hidden;
+    if (statsDailyChart.hidden) return;
+
+    const ns = "http://www.w3.org/2000/svg";
+    const width = 720;
+    const height = 220;
+    const plotTop = 16;
+    const plotBottom = 190;
+    const maxWords = Math.max(...series.map((point) => point.words), 1);
+    [0, 0.5, 1].forEach((ratio) => {
+        const y = plotBottom - ratio * (plotBottom - plotTop);
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("x1", "44");
+        line.setAttribute("x2", String(width - 8));
+        line.setAttribute("y1", String(y));
+        line.setAttribute("y2", String(y));
+        line.setAttribute("class", "chart-grid");
+        statsDailyChart.appendChild(line);
+
+        const label = document.createElementNS(ns, "text");
+        label.setAttribute("x", "38");
+        label.setAttribute("y", String(y + 4));
+        label.setAttribute("text-anchor", "end");
+        label.setAttribute("class", "chart-label");
+        label.textContent = formatStatNumber(Math.round(maxWords * ratio));
+        statsDailyChart.appendChild(label);
+    });
+
+    const plotWidth = width - 56;
+    const step = plotWidth / series.length;
+    const barWidth = Math.max(0.8, step * 0.72);
+    series.forEach((point, index) => {
+        if (!point.words) return;
+        const barHeight = Math.max(2, (point.words / maxWords) * (plotBottom - plotTop));
+        const rect = document.createElementNS(ns, "rect");
+        rect.setAttribute("x", String(44 + index * step + (step - barWidth) / 2));
+        rect.setAttribute("y", String(plotBottom - barHeight));
+        rect.setAttribute("width", String(barWidth));
+        rect.setAttribute("height", String(barHeight));
+        rect.setAttribute("rx", String(Math.min(2, barWidth / 2)));
+        rect.setAttribute("class", "chart-bar");
+        const title = document.createElementNS(ns, "title");
+        title.textContent = `${point.date}: ${formatStatNumber(point.words)} palavras`;
+        rect.appendChild(title);
+        statsDailyChart.appendChild(rect);
+    });
+}
+
+function renderStats(data) {
+    const summary = data.summary;
+    statsWords.textContent = formatStatNumber(summary.words);
+    statsTime.textContent = formatReadingTime(summary.reading_seconds);
+    statsWpm.textContent = summary.avg_wpm == null ? "--" : `${formatStatNumber(Math.round(summary.avg_wpm))} WPM`;
+    statsStreak.textContent = `${summary.streak_days} ${summary.streak_days === 1 ? "dia" : "dias"}`;
+    statsCompletion.textContent = `${summary.completion_rate.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+    statsSessions.textContent = formatStatNumber(summary.sessions);
+    statsCollect.checked = data.collecting;
+    statsChartCaption.textContent = data.period_days ? `ultimos ${data.period_days} dias` : "todo o historico";
+    statsPrivacyNote.textContent = statsScope === "house"
+        ? `${data.participants} participante(s). Apenas perfis com coleta ativa entram nos totais; titulos privados nunca aparecem.`
+        : data.collecting
+            ? "Suas sessoes estao sendo registradas. A conclusao considera todo o seu historico."
+            : "A coleta esta pausada. Seu historico anterior continua visivel apenas para voce.";
+
+    renderDailyChart(data);
+
+    statsModes.textContent = "";
+    const maxModeWords = Math.max(...data.modes.map((mode) => mode.words), 1);
+    data.modes.forEach((mode) => {
+        const row = document.createElement("div");
+        row.className = "stats-mode-row";
+        const name = document.createElement("strong");
+        name.textContent = mode.mode === "focus" ? "Foco" : mode.mode === "flow" ? "Fluxo" : "Outro";
+        const track = document.createElement("div");
+        track.className = "stats-mode-track";
+        const fill = document.createElement("div");
+        fill.className = "stats-mode-fill";
+        fill.style.width = `${Math.max(2, mode.words / maxModeWords * 100)}%`;
+        track.appendChild(fill);
+        const value = document.createElement("span");
+        value.textContent = formatStatNumber(mode.words);
+        row.append(name, track, value);
+        statsModes.appendChild(row);
+    });
+    if (!data.modes.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-hint";
+        empty.textContent = "Nenhum modo registrado.";
+        statsModes.appendChild(empty);
+    }
+
+    statsDocuments.textContent = "";
+    data.documents.forEach((doc) => {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "stats-document-btn";
+        const title = document.createElement("span");
+        title.textContent = doc.title;
+        const words = document.createElement("strong");
+        words.textContent = formatStatNumber(doc.words);
+        const detail = document.createElement("small");
+        detail.textContent = `${formatReadingTime(doc.reading_seconds)} · ${doc.avg_wpm == null ? "sem WPM" : Math.round(doc.avg_wpm) + " WPM"}`;
+        button.append(title, words, detail);
+        button.addEventListener("click", () => showReader(doc.document_id));
+        item.appendChild(button);
+        statsDocuments.appendChild(item);
+    });
+    if (!data.documents.length) {
+        const empty = document.createElement("li");
+        empty.className = "empty-hint";
+        empty.textContent = "Nenhum documento neste periodo.";
+        statsDocuments.appendChild(empty);
+    }
+}
+
+async function fetchStats() {
+    cancelStatsRequest();
+    const requestId = statsRequestId;
+    statsAbortController = new AbortController();
+    statsError.hidden = true;
+    statsLoading.hidden = false;
+    statsContent.setAttribute("aria-busy", "true");
+    try {
+        const res = await apiFetch(`/stats/dashboard?scope=${statsScope}&days=${statsPeriod.value}`, {
+            signal: statsAbortController.signal,
+        });
+        if (requestId !== statsRequestId || res.status === 401) return;
+        if (!res.ok) throw new Error(await apiErrorMessage(res, "Nao foi possivel carregar as estatisticas."));
+        renderStats(await res.json());
+    } catch (error) {
+        if (error.name !== "AbortError" && requestId === statsRequestId) {
+            statsError.textContent = error.message || "Nao foi possivel carregar as estatisticas.";
+            statsError.hidden = false;
+        }
+    } finally {
+        if (requestId === statsRequestId) {
+            statsLoading.hidden = true;
+            statsContent.removeAttribute("aria-busy");
+            statsAbortController = null;
+        }
+    }
+}
+
+function showDashboard(push = true) {
+    readerRequestId += 1;
+    cancelLibraryRequest();
+    if (currentDocId) {
+        saveProgress();
+        closeSession();
+    }
+    stopTtsForLifecycle();
+    engine.pause();
+    resetFlowState();
+    currentDocId = null;
+    loginView.hidden = true;
+    libraryView.hidden = true;
+    readerView.hidden = true;
+    dashboardView.hidden = false;
+    fetchStats();
+    if (push) history.pushState({ view: "stats" }, "", "#/stats");
+}
+
+statsBtn.addEventListener("click", () => showDashboard());
+dashboardBackBtn.addEventListener("click", () => history.back());
+statsPeriod.addEventListener("change", fetchStats);
+statsScopeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+        statsScope = button.dataset.statsScope;
+        statsScopeButtons.forEach((candidate) => {
+            const active = candidate === button;
+            candidate.classList.toggle("active", active);
+            candidate.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        fetchStats();
+    });
+});
+statsCollect.addEventListener("change", async () => {
+    const enabled = statsCollect.checked;
+    statsCollect.disabled = true;
+    const res = await apiFetch("/me/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collect_stats: enabled }),
+    });
+    if (res.ok) {
+        localStorage.setItem(SETTINGS_PREFIX + "collectStats", enabled ? "1" : "0");
+        await fetchStats();
+    } else {
+        statsCollect.checked = !enabled;
+        statsError.textContent = await apiErrorMessage(res, "Nao foi possivel alterar a coleta.");
+        statsError.hidden = false;
+    }
+    statsCollect.disabled = false;
+});
+
 // ---- Navigation ----
 // Real history entries (pushState) so the Android back gesture/button moves
 // reader → library instead of leaving the site, reloading inside the reader
 // (or following a #/read/{id}/{mode} link) opens straight to that document
 // and mode, and Fluxo→Foco→biblioteca pops one level at a time.
 function showLibrary(push = true) {
+    cancelStatsRequest();
     readerRequestId += 1;
     if (currentDocId) {
         saveProgress();
@@ -1555,6 +1834,8 @@ function showLibrary(push = true) {
     engine.pause();
     resetFlowState();
     readerView.hidden = true;
+    dashboardView.hidden = true;
+    loginView.hidden = true;
     libraryView.hidden = false;
     currentDocId = null;
     fetchLibrary();
@@ -1562,6 +1843,7 @@ function showLibrary(push = true) {
 }
 
 async function showReader(id, push = true, mode = "focus") {
+    cancelStatsRequest();
     const requestId = ++readerRequestId;
     cancelLibraryRequest();
     // Trocar de documento direto (via popstate entre duas leituras, sem
@@ -1591,6 +1873,8 @@ async function showReader(id, push = true, mode = "focus") {
     // every opening word to shrink to the minimum font size).
     libraryView.hidden = true;
     readerView.hidden = false;
+    dashboardView.hidden = true;
+    loginView.hidden = true;
     activeMode = mode;
     setSetting("activeMode", mode);
     applyModeUI(mode);
@@ -1636,12 +1920,19 @@ window.addEventListener("popstate", (e) => {
         } else {
             showReader(state.id, false, state.mode || "focus");
         }
+    } else if (state && state.view === "stats") {
+        showDashboard(false);
     } else {
         showLibrary(false);
     }
 });
 
 function initFromLocation() {
+    if (location.hash === "#/stats") {
+        history.replaceState({ view: "stats" }, "", "#/stats");
+        showDashboard(false);
+        return;
+    }
     const match = location.hash.match(/^#\/read\/(\d+)(?:\/(focus|flow))?$/);
     if (match) {
         const id = Number(match[1]);
