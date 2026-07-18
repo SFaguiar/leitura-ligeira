@@ -13,6 +13,7 @@ data/tts/
 data/logs/
 backups/
 restored-data/
+release-reports/
 data.pre-restore-*/
 
 # Env / secrets

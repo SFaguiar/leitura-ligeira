@@ -115,6 +115,23 @@ aplicação/SQLite. `GET /system/diagnostics` exige login e informa versão,
 integridade do banco, Kokoro, Ollama, HTTP/HTTPS e se internet é necessária,
 sem expor caminhos locais ou detalhes de exceções.
 
+### Gate de release
+
+Antes de publicar ou aceitar uma alteração como candidata à release, execute:
+
+```powershell
+.\verificar_release.bat
+```
+
+O comando valida o lock do ambiente, roda toda a suíte Python, compila os
+módulos, executa `pip check`, verifica a sintaxe JavaScript, os contratos entre
+HTML/CSS/JS, a regressão do driver TTS, um soak determinístico de 6.000 tokens
+em 4x, o Compose e a integridade do SQLite. O processo retorna código diferente
+de zero na primeira falha e grava um relatório JSON atômico em
+`release-reports/`. Em uma máquina deliberadamente sem Docker, use
+`.\verificar_release.bat --skip-docker`; todos os demais gates continuam
+obrigatórios.
+
 ### Narrador local (Kokoro)
 
 O backend precisa do Kokoro-FastAPI ouvindo em `127.0.0.1:8880`. Nesta máquina

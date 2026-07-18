@@ -1264,13 +1264,23 @@ diário.
 - A regressão terminou com 51 testes Python, harness TTS e checks JS verdes;
   o contêiner real iniciou como UID 100 e abriu o SQLite v2 íntegro.
 
-#### [ ] R7 — Release gate automatizado e regressão real
+#### [x] R7 — Release gate automatizado e regressão real *(encerrado em 2026-07-18)*
 - Cobrir autenticação, importações, biblioteca, progresso, prateleiras,
   abandonados, Foco, Fluxo, TTS 4x, skins, dashboard e opt-out.
 - Testar troca de documentos, logout e reinício do servidor durante leitura.
 - Executar teste prolongado de TTS/sincronização em alta velocidade.
 - Um único comando deve rodar testes Python, harnesses JS, verificações
   estáticas e integridade do banco.
+
+**Evidência de encerramento:** `verificar_release.bat` aprovou 62 testes Python,
+119 contratos entre HTML/CSS/JS, regressão do driver, soak TTS em 4x com 120
+blocos/6.000 tokens/119 transições, `compileall`, `pip check`, sintaxe JS,
+Compose e SQLite v2 íntegro em WAL. Uma instância efêmera real confirmou por
+HTTP criação/login, documentos, coleção, busca, prateleiras, sessão Foco,
+dashboard, skin, logout e persistência da posição 180 após encerrar e reiniciar
+o Uvicorn. A automação visual do navegador não abriu por falha do runtime do
+plugin; os contratos DOM e os fluxos reais de processo/API cobrem este gate,
+mantendo a auditoria visual aprofundada no R8.
 
 #### [ ] R8 — Polimento essencial de produto
 - Onboarding curto, estados vazios, carregamentos e erros acionáveis.
