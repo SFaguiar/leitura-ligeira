@@ -2,7 +2,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
 from app.database import get_connection
@@ -120,7 +120,10 @@ def create_document(payload: DocumentCreate, user: dict = Depends(get_current_us
 
 
 @router.get("/documents", response_model=list[DocumentSummary])
-def list_documents(q: str | None = None, user: dict = Depends(get_current_user)):
+def list_documents(
+    q: str | None = Query(default=None, max_length=200),
+    user: dict = Depends(get_current_user),
+):
     query = """
         SELECT d.id, d.title, d.format, d.source_type, d.word_count,
                d.visibility, d.owner_id, d.collection, d.created_at,

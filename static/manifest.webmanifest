@@ -1,0 +1,19 @@
+{
+  "name": "Leitura Ligeira",
+  "short_name": "Leitura",
+  "description": "Biblioteca local com leitura rápida em Foco, Fluxo e narração sincronizada.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eee7da",
+  "theme_color": "#3d2b20",
+  "icons": [
+    {
+      "src": "/static/icons/leitura-ligeira.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

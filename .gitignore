@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv/
+node_modules/
 *.egg-info/
 
 # Data (personal reading library — never commit real content)
@@ -9,10 +10,18 @@ data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
+data/tts/
+data/logs/
+backups/
+restored-data/
+release-reports/
+data.pre-restore-*/
 
 # Env / secrets
 .env
 data/secret_key
+certs/*
+!certs/README.md
 
 # OS
 .DS_Store

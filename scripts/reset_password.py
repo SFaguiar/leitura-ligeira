@@ -9,7 +9,6 @@ Usage:
     python scripts/reset_password.py <nome-do-perfil>
 """
 import getpass
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -19,7 +18,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.auth import hash_password
-from app.database import DB_PATH
+from app.database import get_connection
 
 
 def main():
@@ -28,7 +27,7 @@ def main():
         sys.exit(1)
     name = sys.argv[1].strip()
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     try:
         row = conn.execute("SELECT id, role FROM users WHERE name = ?", (name,)).fetchone()
         if row is None:

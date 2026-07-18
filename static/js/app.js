@@ -1,9 +1,57 @@
 import { RSVPEngine, computeOrpIndex } from "./rsvp.js";
+import { TTSDriver, describeVoice } from "./tts.js";
 
 const libraryView = document.getElementById("library-view");
+const dashboardView = document.getElementById("dashboard-view");
+const statsBtn = document.getElementById("stats-btn");
+const dashboardBackBtn = document.getElementById("dashboard-back-btn");
+const statsScopeButtons = document.querySelectorAll("[data-stats-scope]");
+const statsPeriod = document.getElementById("stats-period");
+const statsCollect = document.getElementById("stats-collect");
+const statsPrivacyNote = document.getElementById("stats-privacy-note");
+const statsError = document.getElementById("stats-error");
+const statsLoading = document.getElementById("stats-loading");
+const statsContent = document.getElementById("stats-content");
+const statsWords = document.getElementById("stats-words");
+const statsTime = document.getElementById("stats-time");
+const statsWpm = document.getElementById("stats-wpm");
+const statsStreak = document.getElementById("stats-streak");
+const statsCompletion = document.getElementById("stats-completion");
+const statsSessions = document.getElementById("stats-sessions");
+const statsChartCaption = document.getElementById("stats-chart-caption");
+const statsDailyChart = document.getElementById("stats-daily-chart");
+const statsChartEmpty = document.getElementById("stats-chart-empty");
+const statsModes = document.getElementById("stats-modes");
+const statsDocuments = document.getElementById("stats-documents");
+const statsErrorPanel = document.getElementById("stats-error-panel");
+const statsRetryBtn = document.getElementById("stats-retry-btn");
+
+const systemView = document.getElementById("system-view");
+const systemBtn = document.getElementById("system-btn");
+const systemBackBtn = document.getElementById("system-back-btn");
+const systemRefreshBtn = document.getElementById("system-refresh-btn");
+const systemRetryBtn = document.getElementById("system-retry-btn");
+const systemSummary = document.getElementById("system-summary");
+const systemOverallBadge = document.getElementById("system-overall-badge");
+const systemSummaryTitle = document.getElementById("system-summary-title");
+const systemSummaryMessage = document.getElementById("system-summary-message");
+const systemVersion = document.getElementById("system-version");
+const systemLoading = document.getElementById("system-loading");
+const systemErrorPanel = document.getElementById("system-error-panel");
+const systemError = document.getElementById("system-error");
+const systemComponents = document.getElementById("system-components");
+const systemGeneratedAt = document.getElementById("system-generated-at");
 const readerView = document.getElementById("reader-view");
 const documentList = document.getElementById("document-list");
 const libraryEmpty = document.getElementById("library-empty");
+const libraryLoading = document.getElementById("library-loading");
+const libraryStateIcon = document.getElementById("library-state-icon");
+const libraryStateEyebrow = document.getElementById("library-state-eyebrow");
+const libraryStateTitle = document.getElementById("library-state-title");
+const libraryStateMessage = document.getElementById("library-state-message");
+const libraryOnboarding = document.getElementById("library-onboarding");
+const libraryStatePrimary = document.getElementById("library-state-primary");
+const libraryStateSecondary = document.getElementById("library-state-secondary");
 
 const newDocBtn = document.getElementById("new-doc-btn");
 const newDocModal = document.getElementById("new-doc-modal");
@@ -47,9 +95,22 @@ const flowBackToPositionBtn = document.getElementById("flow-back-to-position");
 const playPauseBtn = document.getElementById("play-pause-btn");
 const rewindBtn = document.getElementById("rewind-btn");
 const forwardBtn = document.getElementById("forward-btn");
+const ttsToggle = document.getElementById("tts-toggle");
+const ttsToggleLabel = document.getElementById("tts-toggle-label");
+const ttsStatus = document.getElementById("tts-status");
+const ttsSettings = document.getElementById("tts-settings");
+const ttsVoice = document.getElementById("tts-voice");
+const ttsRateSlider = document.getElementById("tts-rate-slider");
+const ttsRateValue = document.getElementById("tts-rate-value");
+const ttsEffectiveWpm = document.getElementById("tts-effective-wpm");
+const ttsBufferSlider = document.getElementById("tts-buffer-slider");
+const ttsBufferValue = document.getElementById("tts-buffer-value");
+const ttsBufferStatus = document.getElementById("tts-buffer-status");
 
+const wpmRow = document.getElementById("wpm-row");
 const wpmSlider = document.getElementById("wpm-slider");
 const wpmValue = document.getElementById("wpm-value");
+const chunkRow = document.getElementById("chunk-row");
 const chunkSlider = document.getElementById("chunk-slider");
 const chunkValue = document.getElementById("chunk-value");
 const fontSlider = document.getElementById("font-slider");
@@ -62,6 +123,17 @@ const navSnapBackToggle = document.getElementById("nav-snap-back-toggle");
 const navPauseSwitchToggle = document.getElementById("nav-pause-switch-toggle");
 
 const themeToggle = document.getElementById("theme-toggle");
+const skinSelect = document.getElementById("skin-select");
+const transportWarning = document.getElementById("transport-warning");
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+const skipLink = document.getElementById("skip-link");
+const appAnnouncer = document.getElementById("app-announcer");
+const shortcutsBtn = document.getElementById("shortcuts-btn");
+const shortcutsModal = document.getElementById("shortcuts-modal");
+const shortcutsCloseBtn = document.getElementById("shortcuts-close-btn");
+const appToast = document.getElementById("app-toast");
+const appToastMessage = document.getElementById("app-toast-message");
+const appToastClose = document.getElementById("app-toast-close");
 
 const currentUserName = document.getElementById("current-user-name");
 const logoutBtn = document.getElementById("logout-btn");
@@ -69,6 +141,9 @@ const logoutBtn = document.getElementById("logout-btn");
 const loginView = document.getElementById("login-view");
 const profileList = document.getElementById("profile-list");
 const newProfileBtn = document.getElementById("new-profile-btn");
+const profileFeedback = document.getElementById("profile-feedback");
+const profileFeedbackText = document.getElementById("profile-feedback-text");
+const profileRetryBtn = document.getElementById("profile-retry-btn");
 
 const loginModal = document.getElementById("login-modal");
 const loginModalName = document.getElementById("login-modal-name");
@@ -83,6 +158,24 @@ const newProfilePasswordInput = document.getElementById("new-profile-password");
 const newProfileError = document.getElementById("new-profile-error");
 const newProfileCancelBtn = document.getElementById("new-profile-cancel-btn");
 const newProfileSubmitBtn = document.getElementById("new-profile-submit-btn");
+
+// ---- Transport security ----
+async function applyTransportStatus() {
+    const isHttps = window.location.protocol === "https:";
+    document.documentElement.setAttribute("data-transport", isHttps ? "https" : "http");
+    transportWarning.hidden = isHttps;
+    if (isHttps) return;
+    try {
+        const response = await fetch("/system/transport");
+        if (!response.ok) return;
+        const status = await response.json();
+        transportWarning.dataset.lanEnabled = status.lan_enabled ? "true" : "false";
+    } catch {
+        // The browser protocol remains the authoritative safe fallback.
+    }
+}
+
+applyTransportStatus();
 
 const abandonedModal = document.getElementById("abandoned-modal");
 const abandonedModalTitle = document.getElementById("abandoned-modal-title");
@@ -110,6 +203,7 @@ const editDocSaveBtn = document.getElementById("edit-doc-save-btn");
 const SETTINGS_PREFIX = "settings.";
 const SETTINGS_TYPES = {
     theme: "string",
+    skin: "string",
     activeMode: "string",
     wpmFocus: "number",
     wpmFlow: "number",
@@ -120,9 +214,14 @@ const SETTINGS_TYPES = {
     orpEnabled: "boolean",
     navSnapBackOnClick: "boolean",
     navPauseOnSwitch: "boolean",
+    collectStats: "boolean",
+    ttsVoice: "string",
+    ttsRate: "number",
+    ttsBufferSeconds: "number",
 };
 const SETTINGS_DEFAULTS = {
     theme: "light",
+    skin: "library",
     activeMode: "focus",
     wpmFocus: 300,
     chunkFocus: 1,
@@ -132,6 +231,10 @@ const SETTINGS_DEFAULTS = {
     orpEnabled: false,
     navSnapBackOnClick: false,
     navPauseOnSwitch: false,
+    collectStats: true,
+    ttsVoice: "pf_dora",
+    ttsRate: 1,
+    ttsBufferSeconds: 60,
 };
 // Maps a local settings key to its column name on the server. Fase 4 syncs
 // every write here (debounced) so a second device/profile picks it up —
@@ -139,6 +242,7 @@ const SETTINGS_DEFAULTS = {
 // source of truth.
 const SETTINGS_SERVER_KEYS = {
     theme: "theme",
+    skin: "skin",
     activeMode: "active_mode",
     wpmFocus: "wpm_focus",
     wpmFlow: "wpm_flow",
@@ -149,6 +253,7 @@ const SETTINGS_SERVER_KEYS = {
     orpEnabled: "orp_enabled",
     navSnapBackOnClick: "nav_snap_back_on_click",
     navPauseOnSwitch: "nav_pause_on_switch",
+    collectStats: "collect_stats",
 };
 
 function getSetting(key) {
@@ -188,7 +293,7 @@ async function flushSettingsSync() {
     settingsSyncQueue = {};
     if (Object.keys(body).length === 0) return;
     try {
-        await fetch("/me/settings", {
+        await securityFetch("/me/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
@@ -213,17 +318,40 @@ function applyServerSettings(s) {
     localStorage.setItem(SETTINGS_PREFIX + "orpEnabled", s.orp_enabled ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "navSnapBackOnClick", s.nav_snap_back_on_click ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "navPauseOnSwitch", s.nav_pause_on_switch ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "collectStats", s.collect_stats ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "skin", s.skin);
 }
 
 function modeKey(base) {
     return `${base}${activeMode === "focus" ? "Focus" : "Flow"}`;
 }
 
+function updateThemeMetadata() {
+    const odysseus = document.documentElement.dataset.skin === "odysseus";
+    const dark = document.documentElement.dataset.theme === "dark";
+    themeColorMeta.content = odysseus ? "#0d0f10" : dark ? "#17110d" : "#3d2b20";
+}
+
+function applySkin(skin) {
+    const normalized = skin === "odysseus" ? "odysseus" : "library";
+    document.documentElement.setAttribute("data-skin", normalized);
+    skinSelect.value = normalized;
+    setSetting("skin", normalized);
+    updateThemeMetadata();
+}
+
+applySkin(getSetting("skin"));
+skinSelect.addEventListener("change", () => applySkin(skinSelect.value));
+
 // ---- Theme ----
 function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
-    themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+    const dark = theme === "dark";
+    themeToggle.textContent = dark ? "☀️" : "🌙";
+    themeToggle.setAttribute("aria-label", dark ? "Ativar tema claro" : "Ativar tema escuro");
+    themeToggle.setAttribute("aria-pressed", String(dark));
     setSetting("theme", theme);
+    updateThemeMetadata();
 }
 applyTheme(getSetting("theme"));
 themeToggle.addEventListener("click", () => {
@@ -238,10 +366,59 @@ themeToggle.addEventListener("click", () => {
 // é o único lugar que reage a uma sessão expirada/inválida. (currentUser is
 // declared earlier, in the Settings module, to avoid a TDZ hit — see there.)
 
+let csrfToken = null;
+let csrfRequest = null;
+
+function clearCsrfToken() {
+    csrfToken = null;
+    csrfRequest = null;
+}
+
+async function ensureCsrfToken() {
+    if (csrfToken) return csrfToken;
+    if (!csrfRequest) {
+        csrfRequest = fetch("/security/csrf", { cache: "no-store" })
+            .then(async (response) => {
+                if (!response.ok) throw new Error("Não foi possível iniciar a proteção CSRF.");
+                const payload = await response.json();
+                if (!payload.token) throw new Error("Token CSRF ausente.");
+                csrfToken = payload.token;
+                return csrfToken;
+            })
+            .finally(() => {
+                csrfRequest = null;
+            });
+    }
+    return csrfRequest;
+}
+
+async function securityFetch(url, options = {}, retried = false) {
+    const method = String(options.method || "GET").toUpperCase();
+    const unsafe = !["GET", "HEAD", "OPTIONS"].includes(method);
+    const requestOptions = { ...options };
+    if (unsafe) {
+        const headers = new Headers(options.headers || {});
+        headers.set("X-CSRF-Token", await ensureCsrfToken());
+        requestOptions.headers = headers;
+    }
+    const response = await fetch(url, requestOptions);
+    if (
+        unsafe &&
+        !retried &&
+        response.status === 403 &&
+        response.headers.get("X-CSRF-Required") === "1"
+    ) {
+        clearCsrfToken();
+        return securityFetch(url, options, true);
+    }
+    return response;
+}
+
 async function apiFetch(url, options) {
-    const res = await fetch(url, options);
+    const res = await securityFetch(url, options);
     if (res.status === 401) {
         currentUser = null;
+        clearCsrfToken();
         showLogin();
     }
     return res;
@@ -256,31 +433,209 @@ async function apiErrorMessage(res, fallback) {
     }
 }
 
+// ---- Product feedback, focus and dialog accessibility (R8) ----
+let toastTimer = null;
+const modalReturnFocus = new WeakMap();
+
+function announce(message) {
+    appAnnouncer.textContent = "";
+    requestAnimationFrame(() => {
+        appAnnouncer.textContent = message;
+    });
+}
+
+function focusView(view, label) {
+    skipLink.href = `#${view.id}`;
+    requestAnimationFrame(() => {
+        view.focus({ preventScroll: true });
+        if (label) announce(label);
+    });
+}
+
+function setButtonBusy(button, busy, busyLabel = "Aguarde...") {
+    if (busy) {
+        button.dataset.idleLabel = button.textContent;
+        button.textContent = busyLabel;
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+    } else {
+        if (button.dataset.idleLabel) button.textContent = button.dataset.idleLabel;
+        delete button.dataset.idleLabel;
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+    }
+}
+
+function showToast(message, { error = false, timeout = 7000 } = {}) {
+    clearTimeout(toastTimer);
+    appToastMessage.textContent = message;
+    appToast.classList.toggle("error", error);
+    appToast.setAttribute("role", error ? "alert" : "status");
+    appToast.setAttribute("aria-live", error ? "assertive" : "polite");
+    appToast.hidden = false;
+    if (timeout > 0) {
+        toastTimer = setTimeout(() => {
+            appToast.hidden = true;
+        }, timeout);
+    }
+}
+
+function clearFieldError(errorElement, controls) {
+    errorElement.hidden = true;
+    controls.forEach((control) => control.removeAttribute("aria-invalid"));
+}
+
+function showFieldError(errorElement, message, controls) {
+    errorElement.textContent = message;
+    errorElement.hidden = false;
+    controls.forEach((control) => control.setAttribute("aria-invalid", "true"));
+}
+
+function openDialog(modal, initialFocus) {
+    modalReturnFocus.set(modal, document.activeElement);
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+    requestAnimationFrame(() => initialFocus?.focus());
+}
+
+function closeDialog(modal) {
+    if (modal.hidden) return;
+    modal.hidden = true;
+    if (!document.querySelector(".modal:not([hidden])")) {
+        document.body.classList.remove("modal-open");
+    }
+    const returnFocus = modalReturnFocus.get(modal);
+    modalReturnFocus.delete(modal);
+    if (returnFocus?.isConnected && !returnFocus.closest("[hidden]")) {
+        requestAnimationFrame(() => returnFocus.focus());
+    }
+}
+
+function focusableElements(modal) {
+    return [...modal.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )].filter((element) => !element.hidden && element.getClientRects().length > 0);
+}
+
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") return;
+    const modal = document.querySelector(".modal:not([hidden])");
+    if (!modal) return;
+    const focusable = focusableElements(modal);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+});
+
+appToastClose.addEventListener("click", () => {
+    clearTimeout(toastTimer);
+    appToast.hidden = true;
+});
+
+function openShortcuts() {
+    openDialog(shortcutsModal, shortcutsCloseBtn);
+}
+
+function closeShortcuts() {
+    closeDialog(shortcutsModal);
+}
+
+shortcutsBtn.addEventListener("click", openShortcuts);
+shortcutsCloseBtn.addEventListener("click", closeShortcuts);
+shortcutsModal.addEventListener("click", (event) => {
+    if (event.target === shortcutsModal) closeShortcuts();
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "?" || !event.shiftKey) return;
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName) || event.target.isContentEditable) return;
+    event.preventDefault();
+    if (shortcutsModal.hidden) openShortcuts();
+    else closeShortcuts();
+});
+
 function showLogin() {
+    // A 401/logout can replace the reader view without passing through
+    // showLibrary(); discard any queued Flow work and document DOM here too.
+    readerRequestId += 1;
+    resetLibraryState();
+    cancelStatsRequest();
+    stopTtsForLifecycle();
+    engine.pause();
+    releaseWakeLock();
+    resetSessionState();
+    resetFlowState();
+    currentDocId = null;
+    ttsVoicesLoaded = false;
+    ttsVoicesRequestId += 1;
+    ttsAvailable = null;
+    ttsAvailabilityChecking = false;
+    ttsUnavailableReason = "";
     readerView.hidden = true;
     libraryView.hidden = true;
     loginView.hidden = false;
+    dashboardView.hidden = true;
+    systemView.hidden = true;
     currentUserName.hidden = true;
     logoutBtn.hidden = true;
+    systemBtn.hidden = true;
+    cancelSystemRequest();
+    focusView(loginView, "Escolha um perfil para entrar");
     loadProfileList();
 }
 
 async function loadProfileList() {
-    const res = await fetch("/users");
-    const users = res.ok ? await res.json() : [];
-    profileList.innerHTML = "";
-    users.forEach((u) => {
-        const li = document.createElement("li");
-        li.textContent = u.name;
-        li.addEventListener("click", () => openLoginModal(u.name));
-        profileList.appendChild(li);
-    });
+    profileList.replaceChildren();
+    profileFeedback.setAttribute("role", "status");
+    profileFeedback.hidden = false;
+    profileFeedbackText.textContent = "Carregando perfis...";
+    profileRetryBtn.hidden = true;
+    try {
+        const res = await fetch("/users");
+        if (!res.ok) throw new Error("profiles-unavailable");
+        const users = await res.json();
+        profileFeedback.hidden = users.length > 0;
+        if (!users.length) {
+            profileFeedback.hidden = false;
+            profileFeedbackText.textContent = "Ainda não há perfis. Crie o primeiro para preparar sua biblioteca.";
+        }
+        users.forEach((u) => {
+            const li = document.createElement("li");
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "profile-button";
+            button.textContent = u.name;
+            button.dataset.initial = u.name.trim().charAt(0).toUpperCase() || "?";
+            button.setAttribute("aria-label", `Entrar como ${u.name}`);
+            button.addEventListener("click", () => openLoginModal(u.name));
+            li.appendChild(button);
+            profileList.appendChild(li);
+        });
+    } catch {
+        profileFeedback.hidden = false;
+        profileFeedbackText.textContent = "Não foi possível carregar os perfis. Confira se o servidor continua ativo.";
+        profileRetryBtn.hidden = false;
+        profileFeedback.setAttribute("role", "alert");
+    }
 }
+
+profileRetryBtn.addEventListener("click", () => {
+    profileFeedback.setAttribute("role", "status");
+    loadProfileList();
+});
 
 async function afterLogin() {
     currentUserName.textContent = currentUser.name;
     currentUserName.hidden = false;
     logoutBtn.hidden = false;
+    systemBtn.hidden = false;
     loginView.hidden = true;
     try {
         const res = await fetch("/me/settings");
@@ -291,6 +646,10 @@ async function afterLogin() {
         // Offline mirror already has whatever was there before — carry on.
     }
     applyTheme(getSetting("theme"));
+    applySkin(getSetting("skin"));
+    // Voice discovery is best-effort and may wait on the local Kokoro service;
+    // it must never hold the library hostage during login.
+    loadTtsVoices();
     initFromLocation();
 }
 
@@ -307,12 +666,11 @@ function openLoginModal(name) {
     loginTargetName = name;
     loginModalName.textContent = name;
     loginPasswordInput.value = "";
-    loginError.hidden = true;
-    loginModal.hidden = false;
-    loginPasswordInput.focus();
+    clearFieldError(loginError, [loginPasswordInput]);
+    openDialog(loginModal, loginPasswordInput);
 }
 function closeLoginModal() {
-    loginModal.hidden = true;
+    closeDialog(loginModal);
 }
 loginCancelBtn.addEventListener("click", closeLoginModal);
 loginModal.addEventListener("click", (e) => {
@@ -327,34 +685,48 @@ loginPasswordInput.addEventListener("keydown", (e) => {
 loginSubmitBtn.addEventListener("click", async () => {
     const password = loginPasswordInput.value;
     if (!password) {
-        loginError.textContent = "Digite a senha.";
-        loginError.hidden = false;
+        showFieldError(loginError, "Digite a senha.", [loginPasswordInput]);
         return;
     }
-    const res = await fetch("/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: loginTargetName, password }),
-    });
-    if (!res.ok) {
-        loginError.textContent = await apiErrorMessage(res, "Nome ou senha incorretos.");
-        loginError.hidden = false;
-        return;
+    clearFieldError(loginError, [loginPasswordInput]);
+    setButtonBusy(loginSubmitBtn, true, "Entrando...");
+    try {
+        const res = await securityFetch("/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: loginTargetName, password }),
+        });
+        if (!res.ok) {
+            showFieldError(
+                loginError,
+                await apiErrorMessage(res, "Nome ou senha incorretos."),
+                [loginPasswordInput],
+            );
+            return;
+        }
+        currentUser = await res.json();
+        clearCsrfToken();
+        await ensureCsrfToken();
+        closeLoginModal();
+        await afterLogin();
+    } catch {
+        showFieldError(
+            loginError,
+            "Não foi possível entrar. Confira se o servidor continua ativo e tente novamente.",
+            [loginPasswordInput],
+        );
+    } finally {
+        setButtonBusy(loginSubmitBtn, false);
     }
-    currentUser = await res.json();
-    closeLoginModal();
-    await afterLogin();
 });
-
 function openNewProfileModal() {
     newProfileNameInput.value = "";
     newProfilePasswordInput.value = "";
-    newProfileError.hidden = true;
-    newProfileModal.hidden = false;
-    newProfileNameInput.focus();
+    clearFieldError(newProfileError, [newProfileNameInput, newProfilePasswordInput]);
+    openDialog(newProfileModal, newProfileNameInput);
 }
 function closeNewProfileModal() {
-    newProfileModal.hidden = true;
+    closeDialog(newProfileModal);
 }
 newProfileBtn.addEventListener("click", openNewProfileModal);
 newProfileCancelBtn.addEventListener("click", closeNewProfileModal);
@@ -377,36 +749,64 @@ newProfileSubmitBtn.addEventListener("click", async () => {
     const name = newProfileNameInput.value.trim();
     const password = newProfilePasswordInput.value;
     if (!name) {
-        newProfileError.textContent = "Digite um nome.";
-        newProfileError.hidden = false;
+        showFieldError(newProfileError, "Digite um nome.", [newProfileNameInput]);
         return;
     }
     if (!password) {
-        newProfileError.textContent = "Escolha uma senha.";
-        newProfileError.hidden = false;
+        showFieldError(newProfileError, "Escolha uma senha.", [newProfilePasswordInput]);
         return;
     }
-    const res = await fetch("/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, password }),
-    });
-    if (!res.ok) {
-        newProfileError.textContent = await apiErrorMessage(res, "Não foi possível criar o perfil.");
-        newProfileError.hidden = false;
-        return;
+    clearFieldError(newProfileError, [newProfileNameInput, newProfilePasswordInput]);
+    setButtonBusy(newProfileSubmitBtn, true, "Criando...");
+    try {
+        const res = await securityFetch("/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, password }),
+        });
+        if (!res.ok) {
+            showFieldError(
+                newProfileError,
+                await apiErrorMessage(res, "Não foi possível criar o perfil."),
+                [newProfileNameInput, newProfilePasswordInput],
+            );
+            return;
+        }
+        currentUser = await res.json();
+        clearCsrfToken();
+        await ensureCsrfToken();
+        closeNewProfileModal();
+        await afterLogin();
+    } catch {
+        showFieldError(
+            newProfileError,
+            "Não foi possível criar o perfil. Confira o servidor e tente novamente.",
+            [newProfileNameInput, newProfilePasswordInput],
+        );
+    } finally {
+        setButtonBusy(newProfileSubmitBtn, false);
     }
-    currentUser = await res.json();
-    closeNewProfileModal();
-    await afterLogin();
 });
-
 logoutBtn.addEventListener("click", async () => {
-    await fetch("/logout", { method: "POST" });
-    currentUser = null;
-    showLogin();
+    setButtonBusy(logoutBtn, true, "Saindo...");
+    try {
+        if (currentDocId) {
+            await saveProgress();
+            await closeSession();
+        }
+        stopTtsForLifecycle();
+        engine.pause();
+        const response = await securityFetch("/logout", { method: "POST" });
+        if (!response.ok) throw new Error("logout-failed");
+        clearCsrfToken();
+        currentUser = null;
+        showLogin();
+    } catch {
+        showToast("Não foi possível sair. Sua sessão permanece ativa; confira o servidor e tente novamente.", { error: true });
+    } finally {
+        setButtonBusy(logoutBtn, false);
+    }
 });
-
 async function bootstrap() {
     try {
         const res = await fetch("/me");
@@ -426,6 +826,17 @@ async function bootstrap() {
 // and emits events. Mode only decides which region renders that pointer.
 let activeMode = "focus";
 let currentDocId = null;
+let readerRequestId = 0;
+const ttsDriver = new TTSDriver();
+let ttsEnabled = false;
+let ttsVoicesLoaded = false;
+let ttsVoicesRequestId = 0;
+let ttsAvailable = null;
+let ttsAvailabilityChecking = false;
+let ttsUnavailableReason = "";
+let ttsWasPlaying = false;
+let ttsStatusTimer = null;
+let latestTtsWpm = null;
 
 const FONT_RANGES = {
     focus: { min: 24, max: 96, step: 2 },
@@ -448,7 +859,7 @@ function loadModeSliders() {
     const chunkVal = getSetting(modeKey("chunk"));
     chunkSlider.value = chunkVal;
     chunkValue.textContent = chunkSlider.value;
-    engine.setChunkSize(Number(chunkVal));
+    engine.setChunkSize(ttsEnabled ? 1 : Number(chunkVal));
 
     const fontVal = getSetting(modeKey("font"));
     fontSlider.value = fontVal;
@@ -466,28 +877,43 @@ function updateSnapBackVisibility() {
 }
 
 function applyModeUI(mode) {
-    modeFocusBtn.classList.toggle("active", mode === "focus");
-    modeFlowBtn.classList.toggle("active", mode === "flow");
-    rsvpStage.hidden = mode !== "focus";
-    flowRegion.hidden = mode !== "flow";
+    const focusActive = mode === "focus";
+    modeFocusBtn.classList.toggle("active", focusActive);
+    modeFlowBtn.classList.toggle("active", !focusActive);
+    modeFocusBtn.setAttribute("aria-pressed", String(focusActive));
+    modeFlowBtn.setAttribute("aria-pressed", String(!focusActive));
+    rsvpStage.hidden = !focusActive;
+    flowRegion.hidden = focusActive;
 }
 
 // ---- Wake Lock (keep the screen on while reading hands-free) ----
 let wakeLock = null;
+let wakeLockPending = false;
+let wakeLockGeneration = 0;
 
 async function acquireWakeLock() {
-    if (!("wakeLock" in navigator)) return;
+    if (!("wakeLock" in navigator) || wakeLock || wakeLockPending) return;
+    const generation = wakeLockGeneration;
+    wakeLockPending = true;
     try {
-        wakeLock = await navigator.wakeLock.request("screen");
-        wakeLock.addEventListener("release", () => {
-            wakeLock = null;
+        const requestedLock = await navigator.wakeLock.request("screen");
+        if (generation !== wakeLockGeneration || (!engine.playing && !ttsDriver.isPlaying())) {
+            await requestedLock.release();
+            return;
+        }
+        wakeLock = requestedLock;
+        requestedLock.addEventListener("release", () => {
+            if (wakeLock === requestedLock) wakeLock = null;
         });
     } catch (err) {
         wakeLock = null;
+    } finally {
+        wakeLockPending = false;
     }
 }
 
 function releaseWakeLock() {
+    wakeLockGeneration += 1;
     if (wakeLock) {
         wakeLock.release().catch(() => {});
         wakeLock = null;
@@ -495,7 +921,7 @@ function releaseWakeLock() {
 }
 
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && engine.playing && !wakeLock) {
+    if (document.visibilityState === "visible" && (engine.playing || ttsDriver.isPlaying()) && !wakeLock) {
         acquireWakeLock();
     }
     // Minimizar/trocar de app no celular não dispara pause explícito — este
@@ -545,6 +971,7 @@ let orpEnabled = getSetting("orpEnabled");
 function applyOrpToggleUI() {
     orpToggle.textContent = orpEnabled ? "Ligado" : "Desligado";
     orpToggle.classList.toggle("active", orpEnabled);
+    orpToggle.setAttribute("aria-pressed", String(orpEnabled));
 }
 applyOrpToggleUI();
 
@@ -562,8 +989,10 @@ let navPauseOnSwitch = getSetting("navPauseOnSwitch");
 function applyNavToggleUI() {
     navSnapBackToggle.textContent = navSnapBackOnClick ? "Ligado" : "Desligado";
     navSnapBackToggle.classList.toggle("active", navSnapBackOnClick);
+    navSnapBackToggle.setAttribute("aria-pressed", String(navSnapBackOnClick));
     navPauseSwitchToggle.textContent = navPauseOnSwitch ? "Ligado" : "Desligado";
     navPauseSwitchToggle.classList.toggle("active", navPauseOnSwitch);
+    navPauseSwitchToggle.setAttribute("aria-pressed", String(navPauseOnSwitch));
 }
 applyNavToggleUI();
 
@@ -641,14 +1070,26 @@ function renderChunk(tokens) {
 // which is what makes the binary search valid — and .flow-content is
 // position:relative so offsetTop shares scrollTop's coordinate space.
 let flowBuiltForTokens = null;
-let flowParagraphs = []; // [{ el, startIdx, spanified }] — startIdx = global token index of the paragraph's 1st word
+let flowBlocks = []; // [{ el, startIdx, spanified }] — startIdx = global token index of the block's 1st word
 let flowFollowMode = true;
 let flowAutoScrolling = false;
 let flowAutoScrollTimer = null;
 let flowHighlightedEls = [];
+let flowSpanifyFrameId = null;
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function paragraphPlainText(tokens, startIdx, endIdx) {
+// Hardening (Fase 6.1 audit): a "block" is NOT an unbounded paragraph. A
+// pathological document (e.g. a PDF extracted as one break-less wall of text)
+// would otherwise be a single block, and spanifying it would freeze the thread
+// — the exact bug lazy spanification exists to kill. So a block closes at a
+// paragraph end, OR once it is long enough and hits a sentence end (a natural
+// break), OR at a hard ceiling regardless. Sentence-end breaks make the soft
+// splits read like real paragraph breaks. Normal prose paragraphs (< 200
+// words) never split, so nothing changes visually for them.
+const FLOW_BLOCK_SENTENCE_TARGET = 200; // past this many tokens, break at the next sentence end
+const FLOW_BLOCK_MAX_TOKENS = 250; // force a break here even mid-sentence
+
+function blockPlainText(tokens, startIdx, endIdx) {
     let text = "";
     for (let i = startIdx; i < endIdx; i++) {
         text += (i > startIdx ? " " : "") + tokens[i].text;
@@ -656,35 +1097,38 @@ function paragraphPlainText(tokens, startIdx, endIdx) {
     return text;
 }
 
-// Replaces a paragraph's plain text with one <span class="flow-word"> per
-// word (idempotent — scroll-spanify and force-spanify can both target the
-// same paragraph). dataset.idx carries the GLOBAL token index so click and
-// highlight can address any word regardless of which paragraph it's in.
-function spanifyParagraph(pIdx) {
-    const para = flowParagraphs[pIdx];
-    if (!para || para.spanified) return;
+// Replaces a block's plain text with one <span class="flow-word"> per word
+// (idempotent — scroll-spanify and force-spanify can both target the same
+// block). Builds into a DocumentFragment and appends ONCE: a single DOM
+// mutation instead of 2·N interleaved appends, so spanifying a block never
+// thrashes layout mid-loop. dataset.idx carries the GLOBAL token index so
+// click and highlight can address any word regardless of which block it's in.
+function spanifyBlock(bIdx) {
+    const blk = flowBlocks[bIdx];
+    if (!blk || blk.spanified) return;
     const tokens = engine.getTokens();
-    const endIdx = pIdx + 1 < flowParagraphs.length ? flowParagraphs[pIdx + 1].startIdx : tokens.length;
-    para.el.textContent = "";
-    for (let i = para.startIdx; i < endIdx; i++) {
+    const endIdx = bIdx + 1 < flowBlocks.length ? flowBlocks[bIdx + 1].startIdx : tokens.length;
+    const frag = document.createDocumentFragment();
+    for (let i = blk.startIdx; i < endIdx; i++) {
         const span = document.createElement("span");
         span.className = "flow-word";
         span.textContent = tokens[i].text;
         span.dataset.idx = i;
-        para.el.appendChild(span);
-        para.el.appendChild(document.createTextNode(" "));
+        frag.appendChild(span);
+        frag.appendChild(document.createTextNode(" "));
     }
-    para.spanified = true;
+    blk.el.replaceChildren(frag);
+    blk.spanified = true;
 }
 
-// Binary search: which paragraph owns a given global token index.
-function paragraphIndexForToken(tokenIdx) {
+// Binary search: which block owns a given global token index.
+function blockIndexForToken(tokenIdx) {
     let lo = 0;
-    let hi = flowParagraphs.length - 1;
+    let hi = flowBlocks.length - 1;
     let result = 0;
     while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        if (flowParagraphs[mid].startIdx <= tokenIdx) {
+        if (flowBlocks[mid].startIdx <= tokenIdx) {
             result = mid;
             lo = mid + 1;
         } else {
@@ -694,67 +1138,128 @@ function paragraphIndexForToken(tokenIdx) {
     return result;
 }
 
-// Spanifies every paragraph within one viewport-height above/below the
-// visible area. Binary search finds the first candidate by offsetTop
-// (monotonic), then a forward scan spanifies until past the bottom margin.
-function spanifyVisibleParagraphs() {
-    if (!flowParagraphs.length) return;
+// Spanifies every block within one viewport-height above/below the visible
+// area. Split into a READ phase (measure offsetTop, collect targets — no
+// mutation) and a WRITE phase (spanify) so reads and writes never interleave;
+// interleaving them is what thrashes layout on mobile. offsetTop is monotonic
+// across blocks (they stack in order), which makes the binary search valid,
+// and .flow-content is position:relative so offsetTop shares scrollTop's
+// coordinate space.
+function measureVisibleFlowBlockIndexes() {
+    if (!flowBlocks.length) return;
     const view = flowContent.clientHeight;
-    const top = flowContent.scrollTop - view; // one screen of pre-spanify buffer
-    const bottom = flowContent.scrollTop + view * 2;
+    const scrollTop = flowContent.scrollTop;
+    const top = scrollTop - view; // one screen of pre-spanify buffer
+    const bottom = scrollTop + view * 2;
 
     let lo = 0;
-    let hi = flowParagraphs.length - 1;
-    let startP = flowParagraphs.length;
+    let hi = flowBlocks.length - 1;
+    let startP = flowBlocks.length;
     while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        if (flowParagraphs[mid].el.offsetTop >= top) {
+        if (flowBlocks[mid].el.offsetTop >= top) {
             startP = mid;
             hi = mid - 1;
         } else {
             lo = mid + 1;
         }
     }
-    for (let i = Math.max(0, startP - 1); i < flowParagraphs.length; i++) {
-        if (flowParagraphs[i].el.offsetTop > bottom) break;
-        spanifyParagraph(i);
+    const targets = [];
+    for (let i = Math.max(0, startP - 1); i < flowBlocks.length; i++) {
+        if (flowBlocks[i].el.offsetTop > bottom) break;
+        if (!flowBlocks[i].spanified) targets.push(i);
     }
+    return targets;
+}
+
+function spanifyFlowBlocks(blockIndexes) {
+    for (const i of blockIndexes) spanifyBlock(i);
+}
+
+function spanifyVisibleBlocks() {
+    // Keep the phases structurally separate: this function completes every
+    // layout read before spanifyFlowBlocks performs the first live-DOM write.
+    const targets = measureVisibleFlowBlockIndexes();
+    if (!targets || targets.length === 0) return;
+    spanifyFlowBlocks(targets);
+}
+
+// Coalesce a burst of scroll events into one spanify pass per animation
+// frame. Raw scroll events fire faster than the browser paints, so measuring
+// layout on each one is wasted work; batching to rAF also means the read
+// happens after layout has settled for the frame, not mid-scroll.
+function scheduleSpanifyPass() {
+    if (flowSpanifyFrameId !== null || readerView.hidden || flowRegion.hidden || !flowBlocks.length) return;
+    const scheduledForTokens = flowBuiltForTokens;
+    flowSpanifyFrameId = requestAnimationFrame(() => {
+        flowSpanifyFrameId = null;
+        // A navigation/reset may have happened after this frame was queued.
+        // Never let obsolete work mutate the next document's Flow DOM.
+        if (readerView.hidden || flowRegion.hidden || flowBuiltForTokens !== scheduledForTokens) return;
+        spanifyVisibleBlocks();
+    });
 }
 
 function buildFlowContent(tokens) {
     if (flowBuiltForTokens === tokens) return;
-    flowContent.innerHTML = "";
-    flowParagraphs = [];
+    flowBlocks = [];
 
     const frag = document.createDocumentFragment();
-    let paragraphStart = 0;
-    const flushParagraph = (endIdx) => {
+    let blockStart = 0;
+    let count = 0;
+    const flushBlock = (endIdx) => {
         const el = document.createElement("div");
         el.className = "flow-paragraph";
-        el.textContent = paragraphPlainText(tokens, paragraphStart, endIdx);
+        el.textContent = blockPlainText(tokens, blockStart, endIdx);
         frag.appendChild(el);
-        flowParagraphs.push({ el, startIdx: paragraphStart, spanified: false });
-        paragraphStart = endIdx;
+        flowBlocks.push({ el, startIdx: blockStart, spanified: false });
+        blockStart = endIdx;
+        count = 0;
     };
     tokens.forEach((token, idx) => {
-        if (token.paragraphEnd) flushParagraph(idx + 1);
+        count++;
+        const sentenceBreak = count >= FLOW_BLOCK_SENTENCE_TARGET && token.sentenceEnd;
+        if (token.paragraphEnd || sentenceBreak || count >= FLOW_BLOCK_MAX_TOKENS) {
+            flushBlock(idx + 1);
+        }
     });
-    if (paragraphStart < tokens.length || flowParagraphs.length === 0) {
-        flushParagraph(tokens.length);
+    if (blockStart < tokens.length || flowBlocks.length === 0) {
+        flushBlock(tokens.length);
     }
-    flowContent.appendChild(frag);
+    flowContent.replaceChildren(frag);
 
     flowBuiltForTokens = tokens;
     flowHighlightedEls = [];
     // Reading offsetTop below forces the layout the spanify pass needs, so a
     // direct synchronous call is both correct and cheaper than deferring.
-    spanifyVisibleParagraphs(); // spanify whatever's on screen at the initial (top) position
+    spanifyVisibleBlocks(); // spanify whatever's on screen at the initial (top) position
 }
 
 function ensureFlowBuilt() {
     const tokens = engine.getTokens();
     if (!tokens.length) return;
     buildFlowContent(tokens);
+}
+
+// Full reset of Flow's cached DOM/state — called when a new document loads so
+// the previous document's spans, scroll position and follow state don't leak
+// into the next one (all this state is module-level and would otherwise
+// persist across documents).
+function resetFlowState() {
+    flowBuiltForTokens = null;
+    flowBlocks = [];
+    flowHighlightedEls = [];
+    flowFollowMode = true;
+    flowAutoScrolling = false;
+    if (flowSpanifyFrameId !== null) {
+        cancelAnimationFrame(flowSpanifyFrameId);
+        flowSpanifyFrameId = null;
+    }
+    clearTimeout(flowAutoScrollTimer);
+    flowAutoScrollTimer = null;
+    flowContent.replaceChildren();
+    flowContent.scrollTop = 0;
+    flowBackToPositionBtn.hidden = true;
 }
 
 function buildParagraphMarks(tokens) {
@@ -780,6 +1285,7 @@ function scrollFlowToCurrentWord(behavior) {
     clearTimeout(flowAutoScrollTimer);
     flowAutoScrollTimer = setTimeout(() => {
         flowAutoScrolling = false;
+        flowAutoScrollTimer = null;
     }, 200);
 }
 
@@ -789,19 +1295,19 @@ function scrollFlowToCurrentWord(behavior) {
 // the index is out of range.
 function flowWordEl(tokenIdx) {
     const total = engine.getTokens().length;
-    if (tokenIdx < 0 || tokenIdx >= total || !flowParagraphs.length) return null;
-    const pIdx = paragraphIndexForToken(tokenIdx);
-    spanifyParagraph(pIdx);
+    if (tokenIdx < 0 || tokenIdx >= total || !flowBlocks.length) return null;
+    const bIdx = blockIndexForToken(tokenIdx);
+    spanifyBlock(bIdx);
     // .children is element-only (the " " separators are text nodes, so they
-    // don't shift the index) — child[k] is the k-th word of the paragraph.
-    return flowParagraphs[pIdx].el.children[tokenIdx - flowParagraphs[pIdx].startIdx] || null;
+    // don't shift the index) — child[k] is the k-th word of the block.
+    return flowBlocks[bIdx].el.children[tokenIdx - flowBlocks[bIdx].startIdx] || null;
 }
 
 // Highlights the *whole* chunk currently on screen (all N words when
 // "palavras por vez" > 1), not just its first word — so Flow matches what
 // Focus is actually flashing instead of looking like it skipped words.
 function updateFlowHighlight(chunkTokens) {
-    if (flowRegion.hidden || !flowParagraphs.length) return;
+    if (flowRegion.hidden || !flowBlocks.length) return;
     const start = engine.pointer;
     const count = chunkTokens ? chunkTokens.length : 1;
     flowHighlightedEls.forEach((el) => el.classList.remove("flow-current"));
@@ -819,11 +1325,11 @@ function updateFlowHighlight(chunkTokens) {
 }
 
 flowContent.addEventListener("scroll", () => {
-    // Runs for every scroll (user or auto-follow) — new paragraphs entering
-    // the viewport need spanifying either way. Direct call (no rAF): the
-    // browser already rate-limits scroll events, and it's a binary search
-    // plus a bounded scan, not a full sweep.
-    spanifyVisibleParagraphs();
+    if (!flowBlocks.length || readerView.hidden || flowRegion.hidden) return;
+    // Runs for every scroll (user or auto-follow) — new blocks entering the
+    // viewport need spanifying either way, coalesced to one pass per frame
+    // (see scheduleSpanifyPass) so bursts of scroll events don't thrash.
+    scheduleSpanifyPass();
     if (flowAutoScrolling) return;
     if (flowFollowMode) {
         flowFollowMode = false;
@@ -837,22 +1343,35 @@ flowBackToPositionBtn.addEventListener("click", () => {
     scrollFlowToCurrentWord("smooth");
 });
 
-flowContent.addEventListener("click", (e) => {
+flowContent.addEventListener("click", async (e) => {
     const wordEl = e.target.closest(".flow-word");
     if (!wordEl) return;
-    engine.seekToIndex(Number(wordEl.dataset.idx));
-    refreshPlayButton();
+    await navigateToToken(Number(wordEl.dataset.idx));
+    announceReaderPosition("Posição selecionada");
     if (navSnapBackOnClick) {
         modeFocusBtn.click();
     }
 });
 
 function updateLiveCounter(pointer, total) {
+    scrubber.setAttribute("aria-valuemax", String(Math.max(0, total - 1)));
+    scrubber.setAttribute("aria-valuenow", String(Math.max(0, pointer)));
+    scrubber.setAttribute("aria-valuetext", total ? `${pointer} de ${total} palavras` : "Documento vazio");
     if (!total) {
         readingProgressInfo.textContent = "";
         return;
     }
     const remaining = Math.max(0, total - pointer);
+    if (ttsEnabled) {
+        const rate = Number(ttsRateSlider.value) || 1;
+        const wpmLabel = Number.isFinite(latestTtsWpm)
+            ? ` · ≈ ${Math.round(latestTtsWpm).toLocaleString()} WPM`
+            : "";
+        readingProgressInfo.textContent =
+            `${pointer.toLocaleString()} / ${total.toLocaleString()} palavras · ` +
+            `Narrador ${rate.toFixed(1)}x${wpmLabel}`;
+        return;
+    }
     const wpm = Number(wpmSlider.value) || 300;
     const minutesLeft = Math.max(0, Math.round(remaining / wpm));
     readingProgressInfo.textContent =
@@ -887,6 +1406,7 @@ const engine = new RSVPEngine({
             fitDisplayText("Fim");
         }
         progressFill.style.width = "100%";
+        announce("Fim do documento. Leitura concluída.");
         // Fim de documento é sinal inequívoco no RSVP — marca 'lido'
         // automaticamente (reversível a qualquer momento na biblioteca).
         saveProgress({ status: "lido" });
@@ -894,35 +1414,326 @@ const engine = new RSVPEngine({
     },
 });
 
+function showTtsStatus(message, { error = false, timeout = 0 } = {}) {
+    clearTimeout(ttsStatusTimer);
+    ttsStatusTimer = null;
+    ttsStatus.textContent = message || "";
+    ttsStatus.classList.toggle("error", error);
+    ttsStatus.hidden = !message;
+    if (message && timeout > 0) {
+        ttsStatusTimer = setTimeout(() => {
+            ttsStatus.hidden = true;
+            ttsStatusTimer = null;
+        }, timeout);
+    }
+}
+
+function buildVoiceGroups(voices) {
+    const groups = new Map();
+    voices.forEach((voice) => {
+        const metadata = describeVoice(voice);
+        if (!groups.has(metadata.locale)) {
+            groups.set(metadata.locale, { order: metadata.order, voices: [] });
+        }
+        groups.get(metadata.locale).voices.push(metadata);
+    });
+    return [...groups.entries()]
+        .sort(([, left], [, right]) => left.order - right.order)
+        .map(([locale, group]) => {
+            const optgroup = document.createElement("optgroup");
+            optgroup.label = locale;
+            group.voices
+                .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"))
+                .forEach((metadata) => {
+                    const option = document.createElement("option");
+                    option.value = metadata.id;
+                    option.textContent = metadata.label;
+                    if (metadata.lang) option.lang = metadata.lang;
+                    optgroup.appendChild(option);
+                });
+            return optgroup;
+        });
+}
+
+async function loadTtsVoices({ force = false } = {}) {
+    if (ttsVoicesLoaded && !force) return ttsAvailable === true;
+    const requestId = ++ttsVoicesRequestId;
+    ttsAvailabilityChecking = true;
+    applyTtsUi();
+    try {
+        const suffix = force ? "?refresh=true" : "";
+        const res = await apiFetch(`/tts/voices${suffix}`);
+        if (requestId !== ttsVoicesRequestId || !currentUser) return false;
+        if (!res.ok) throw new Error("voice-discovery-http");
+        const data = await res.json();
+        if (requestId !== ttsVoicesRequestId || !currentUser) return false;
+        const voices = Array.isArray(data.voices) ? data.voices : [];
+        const serverDefault = data.default || "pf_dora";
+        const stored = getSetting("ttsVoice") || serverDefault;
+        const selected = voices.length === 0
+            ? stored
+            : voices.includes(stored)
+                ? stored
+                : voices.includes(serverDefault) ? serverDefault : voices[0];
+        const options = voices.length ? voices : [selected || serverDefault];
+        ttsVoice.replaceChildren(...buildVoiceGroups(options));
+        ttsVoice.value = selected || serverDefault;
+        setSetting("ttsVoice", ttsVoice.value);
+        ttsAvailable = data.available !== false && voices.length > 0;
+        ttsUnavailableReason = ttsAvailable
+            ? ""
+            : data.reason || "Servidor de narração local indisponível.";
+        ttsVoicesLoaded = true;
+        if (currentDocId) {
+            const resume = ttsDriver.isPlaying();
+            ttsDriver.setVoice(ttsVoice.value);
+            if (ttsEnabled && resume) await ttsDriver.play();
+        }
+        if (!ttsAvailable) {
+            showTtsStatus(
+                `${ttsUnavailableReason} A leitura sem narrador continua disponível.`,
+                { error: true },
+            );
+        } else if (!ttsEnabled) {
+            showTtsStatus("");
+        }
+        return ttsAvailable;
+    } catch {
+        if (requestId !== ttsVoicesRequestId || !currentUser) return false;
+        ttsAvailable = false;
+        ttsVoicesLoaded = true;
+        ttsUnavailableReason = "Não foi possível consultar o narrador local.";
+        showTtsStatus(
+            `${ttsUnavailableReason} A leitura sem narrador continua disponível.`,
+            { error: true },
+        );
+        return false;
+    } finally {
+        if (requestId === ttsVoicesRequestId) {
+            ttsAvailabilityChecking = false;
+            applyTtsUi();
+        }
+    }
+}
+
+function applyTtsUi() {
+    const unavailable = ttsAvailable === false && !ttsEnabled;
+    ttsToggle.classList.toggle("active", ttsEnabled);
+    ttsToggle.classList.toggle("unavailable", unavailable);
+    ttsToggle.setAttribute("aria-pressed", String(ttsEnabled));
+    ttsToggle.setAttribute("aria-busy", String(ttsAvailabilityChecking));
+    ttsToggle.disabled = ttsAvailabilityChecking;
+    ttsToggleLabel.textContent = ttsEnabled
+        ? "Narrador ativo"
+        : ttsAvailabilityChecking
+            ? "Verificando Narrador…"
+            : unavailable ? "Tentar Narrador" : "Ativar Narrador";
+    ttsSettings.hidden = !ttsEnabled;
+    wpmRow.hidden = ttsEnabled;
+    chunkRow.hidden = ttsEnabled;
+}
+
+function handleTtsStateChange({ playing, loading }) {
+    refreshPlayButton();
+    if (!ttsWasPlaying && playing) {
+        openSessionIfNeeded();
+    } else if (ttsWasPlaying && !playing && !loading) {
+        saveProgress();
+    }
+    ttsWasPlaying = playing;
+}
+
+function handleTtsEnd() {
+    refreshPlayButton();
+    if (activeMode === "focus") {
+        rsvpDisplay.classList.remove("orp-single");
+        rsvpDisplay.textContent = "Fim";
+        fitDisplayText("Fim");
+    }
+    progressFill.style.width = "100%";
+    saveProgress({ status: "lido" });
+    closeSession();
+}
+
+function handleTtsMetricsChange({ rate, effectiveWpm }) {
+    const safeRate = Math.max(0.5, Math.min(4, Number(rate) || 1));
+    ttsRateValue.textContent = `${safeRate.toFixed(1)}x`;
+    latestTtsWpm = Number.isFinite(effectiveWpm) ? effectiveWpm : null;
+    ttsEffectiveWpm.textContent = latestTtsWpm === null
+        ? "—"
+        : Math.round(latestTtsWpm).toLocaleString();
+    updateLiveCounter(engine.pointer, engine.getTokens().length);
+}
+
+function handleTtsBufferChange({ readySeconds, targetSeconds, blocks }) {
+    const ready = Math.max(0, Math.round(Number(readySeconds) || 0));
+    const target = Math.max(30, Math.round(Number(targetSeconds) || 60));
+    ttsBufferValue.textContent = `${target}s`;
+    ttsBufferStatus.textContent = blocks > 0
+        ? `${ready}s prontos em ${blocks} ${blocks === 1 ? "bloco" : "blocos"}`
+        : "Preparado sob demanda";
+}
+
+function configureTtsForDocument(documentId) {
+    ttsDriver.configure({
+        engine,
+        apiFetch,
+        docId: documentId,
+        voice: ttsVoice.value || getSetting("ttsVoice") || "pf_dora",
+        onError: (message) => showTtsStatus(message, { error: true }),
+        onEnd: handleTtsEnd,
+        onStateChange: handleTtsStateChange,
+        onMetricsChange: handleTtsMetricsChange,
+        onBufferChange: handleTtsBufferChange,
+        onBlockChange: (block) => {
+            if (block.timing_fallback) {
+                showTtsStatus("Áudio mantido com sincronização aproximada neste trecho.");
+            } else {
+                showTtsStatus("");
+            }
+        },
+    });
+    ttsDriver.setRate(Number(ttsRateSlider.value));
+    ttsDriver.setBufferSeconds(Number(ttsBufferSlider.value));
+}
+
+async function setTtsEnabled(enabled) {
+    if (enabled === ttsEnabled) return true;
+    if (enabled) {
+        const ready = ttsAvailable === true || await loadTtsVoices({ force: true });
+        if (!ready) {
+            applyTtsUi();
+            refreshPlayButton();
+            return false;
+        }
+        engine.pause();
+        ttsEnabled = true;
+        engine.setChunkSize(1);
+        engine.rerender();
+        ttsDriver.setVoice(ttsVoice.value || "pf_dora");
+        ttsDriver.setRate(Number(ttsRateSlider.value));
+        ttsDriver.setBufferSeconds(Number(ttsBufferSlider.value));
+        showTtsStatus("");
+    } else {
+        ttsEnabled = false;
+        ttsDriver.stop();
+        ttsWasPlaying = false;
+        engine.setChunkSize(Number(getSetting(modeKey("chunk"))) || 1);
+        engine.rerender();
+        saveProgress();
+        showTtsStatus("");
+    }
+    applyTtsUi();
+    refreshPlayButton();
+    return true;
+}
+
+function stopTtsForLifecycle() {
+    ttsEnabled = false;
+    ttsDriver.reset();
+    ttsWasPlaying = false;
+    latestTtsWpm = null;
+    ttsEffectiveWpm.textContent = "—";
+    ttsBufferStatus.textContent = "Preparado sob demanda";
+    clearTimeout(ttsStatusTimer);
+    ttsStatusTimer = null;
+    showTtsStatus("");
+    applyTtsUi();
+    engine.setChunkSize(Number(getSetting(modeKey("chunk"))) || 1);
+}
+
 function refreshPlayButton() {
-    playPauseBtn.textContent = engine.playing ? "⏸" : "▶";
-    if (engine.playing) {
+    const playing = ttsEnabled ? ttsDriver.isPlaying() : engine.playing;
+    const loading = ttsEnabled && ttsDriver.isLoading();
+    playPauseBtn.textContent = playing ? "⏸" : "▶";
+    playPauseBtn.classList.toggle("is-loading", loading);
+    playPauseBtn.setAttribute("aria-busy", String(loading));
+    playPauseBtn.setAttribute("aria-label", loading ? "Carregando narração" : playing ? "Pausar" : "Reproduzir");
+    rsvpStage.setAttribute("aria-label", playing ? "Área de leitura. Pausar" : "Área de leitura. Reproduzir");
+    if (engine.playing || ttsDriver.isPlaying()) {
         acquireWakeLock();
     } else {
         releaseWakeLock();
     }
 }
 
-function doTogglePlay(btn) {
+async function doTogglePlay(btn) {
+    if (ttsEnabled) {
+        engine.pause();
+        await ttsDriver.toggle();
+        if (ttsDriver.isLoading()) announce("Narração carregando.");
+        else announce(ttsDriver.isPlaying() ? "Narração reproduzindo." : "Narração pausada.");
+        if (btn) btn.blur();
+        return;
+    }
     const wasPlaying = engine.playing;
     engine.toggle();
     refreshPlayButton();
     if (!wasPlaying && engine.playing) {
         openSessionIfNeeded();
+        announce("Leitura reproduzindo.");
     } else if (wasPlaying && !engine.playing) {
         saveProgress();
+        announce("Leitura pausada.");
     }
     if (btn) btn.blur();
 }
-function doRewind(btn) {
-    engine.rewind();
+
+function sentenceStart(tokens, fromIndex) {
+    let idx = fromIndex;
+    while (idx > 0 && !tokens[idx - 1].sentenceEnd) idx -= 1;
+    return idx;
+}
+
+function rewindTarget() {
+    const tokens = engine.getTokens();
+    if (!tokens.length) return 0;
+    const currentStart = sentenceStart(tokens, engine.pointer);
+    return currentStart < engine.pointer
+        ? currentStart
+        : currentStart > 0 ? sentenceStart(tokens, currentStart - 1) : 0;
+}
+
+function forwardTarget() {
+    const tokens = engine.getTokens();
+    if (!tokens.length) return 0;
+    let idx = Math.max(0, Math.min(tokens.length - 1, engine.pointer));
+    while (idx < tokens.length - 1 && !tokens[idx].sentenceEnd) idx += 1;
+    return Math.min(tokens.length - 1, idx + 1);
+}
+
+async function navigateToToken(tokenIdx) {
+    const total = engine.getTokens().length;
+    if (!total) return;
+    const target = Math.max(0, Math.min(total - 1, Math.floor(tokenIdx)));
+    if (ttsEnabled) {
+        await ttsDriver.seek(target);
+    } else {
+        engine.seekToIndex(target);
+    }
     refreshPlayButton();
+}
+
+function announceReaderPosition(prefix = "Posição atual") {
+    const total = engine.getTokens().length;
+    if (!total) {
+        announce(prefix + ": documento vazio.");
+        return;
+    }
+    const position = Math.max(0, Math.min(total - 1, engine.pointer)) + 1;
+    announce(prefix + ": palavra " + position.toLocaleString() + " de " + total.toLocaleString() + ".");
+}
+
+async function doRewind(btn) {
+    await navigateToToken(rewindTarget());
+    announceReaderPosition("Retrocedido");
     saveProgress();
     if (btn) btn.blur();
 }
-function doForward(btn) {
-    engine.forward();
-    refreshPlayButton();
+
+async function doForward(btn) {
+    await navigateToToken(forwardTarget());
+    announceReaderPosition("Avançado");
     saveProgress();
     if (btn) btn.blur();
 }
@@ -932,14 +1743,52 @@ rewindBtn.addEventListener("click", () => doRewind(rewindBtn));
 forwardBtn.addEventListener("click", () => doForward(forwardBtn));
 rsvpStage.addEventListener("click", () => doTogglePlay());
 
+const initialTtsRate = Math.max(0.5, Math.min(4, Number(getSetting("ttsRate")) || 1));
+ttsRateSlider.value = initialTtsRate.toFixed(1);
+ttsRateValue.textContent = `${initialTtsRate.toFixed(1)}x`;
+const initialTtsBuffer = Math.max(
+    30,
+    Math.min(120, Math.round((Number(getSetting("ttsBufferSeconds")) || 60) / 15) * 15),
+);
+ttsBufferSlider.value = String(initialTtsBuffer);
+ttsBufferValue.textContent = `${initialTtsBuffer}s`;
+applyTtsUi();
+
+ttsToggle.addEventListener("click", async () => {
+    await setTtsEnabled(!ttsEnabled);
+    ttsToggle.blur();
+});
+
+ttsVoice.addEventListener("change", async () => {
+    const resume = ttsDriver.isPlaying();
+    setSetting("ttsVoice", ttsVoice.value);
+    ttsDriver.setVoice(ttsVoice.value);
+    if (ttsEnabled && resume) await ttsDriver.play();
+});
+
+ttsRateSlider.addEventListener("input", () => {
+    const rate = Math.max(0.5, Math.min(4, Number(ttsRateSlider.value) || 1));
+    ttsRateValue.textContent = `${rate.toFixed(1)}x`;
+    setSetting("ttsRate", rate);
+    ttsDriver.setRate(rate);
+});
+
+ttsBufferSlider.addEventListener("input", () => {
+    const seconds = Math.max(30, Math.min(120, Number(ttsBufferSlider.value) || 60));
+    ttsBufferValue.textContent = `${seconds}s`;
+    setSetting("ttsBufferSeconds", seconds);
+    ttsDriver.setBufferSeconds(seconds);
+});
+
 // ---- Mode switching ----
 // Entering Flow pushes a history entry; the Foco button (and the Android
 // back gesture) pop it via history.back() instead of pushing another entry
 // — mirrors the library/reader back-button pattern already in this app.
 function switchMode(mode, { push = true } = {}) {
     if (mode === activeMode) return;
-    if (navPauseOnSwitch && engine.playing) {
+    if (navPauseOnSwitch && (engine.playing || ttsDriver.isPlaying() || ttsDriver.isLoading())) {
         engine.pause();
+        if (ttsEnabled) ttsDriver.pause();
     }
     saveProgress();
     activeMode = mode;
@@ -954,6 +1803,7 @@ function switchMode(mode, { push = true } = {}) {
     }
     engine.rerender();
     refreshPlayButton();
+    announce(mode === "flow" ? "Modo Fluxo. Texto contínuo disponível." : "Modo Foco. Exibição rápida ativa.");
     if (push) {
         history.pushState({ view: "reader", id: currentDocId, mode }, "", `#/read/${currentDocId}/${mode}`);
     }
@@ -971,25 +1821,48 @@ function seekFromPointerEvent(e) {
     const rect = scrubber.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
     const fraction = rect.width ? x / rect.width : 0;
-    engine.seekFraction(fraction);
-    refreshPlayButton();
+    const total = engine.getTokens().length;
+    return navigateToToken(Math.floor(fraction * total));
 }
 
 let scrubbing = false;
+let scrubSeekPromise = Promise.resolve();
 scrubber.addEventListener("pointerdown", (e) => {
     scrubbing = true;
     scrubber.setPointerCapture(e.pointerId);
-    seekFromPointerEvent(e);
+    scrubSeekPromise = seekFromPointerEvent(e);
 });
 scrubber.addEventListener("pointermove", (e) => {
-    if (scrubbing) seekFromPointerEvent(e);
+    if (scrubbing) scrubSeekPromise = seekFromPointerEvent(e);
 });
-scrubber.addEventListener("pointerup", () => {
+scrubber.addEventListener("pointerup", async () => {
     scrubbing = false;
+    await scrubSeekPromise;
+    announceReaderPosition("Posição alterada");
     saveProgress();
 });
-scrubber.addEventListener("pointercancel", () => {
+scrubber.addEventListener("pointercancel", async () => {
     scrubbing = false;
+    await scrubSeekPromise;
+    announceReaderPosition("Posição alterada");
+    saveProgress();
+});
+scrubber.addEventListener("keydown", async (event) => {
+    const total = engine.getTokens().length;
+    if (!total) return;
+    const smallStep = Math.max(1, Math.ceil(total / 100));
+    const largeStep = Math.max(smallStep, Math.ceil(total / 10));
+    let target = null;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") target = engine.pointer - smallStep;
+    if (event.key === "ArrowRight" || event.key === "ArrowUp") target = engine.pointer + smallStep;
+    if (event.key === "PageDown") target = engine.pointer - largeStep;
+    if (event.key === "PageUp") target = engine.pointer + largeStep;
+    if (event.key === "Home") target = 0;
+    if (event.key === "End") target = total - 1;
+    if (target === null) return;
+    event.preventDefault();
+    await navigateToToken(target);
+    announceReaderPosition("Posição alterada");
     saveProgress();
 });
 
@@ -1015,6 +1888,7 @@ fontSlider.addEventListener("input", () => {
 
 document.addEventListener("keydown", (e) => {
     if (readerView.hidden) return;
+    if (e.target.closest("input, select, textarea, button, a, [contenteditable], [role='button'], [role='slider']")) return;
     if (e.code === "Space") {
         e.preventDefault();
         doTogglePlay();
@@ -1026,12 +1900,22 @@ document.addEventListener("keydown", (e) => {
         doForward();
     } else if (e.code === "ArrowUp") {
         e.preventDefault();
-        wpmSlider.value = Math.min(1000, Number(wpmSlider.value) + 10);
-        wpmSlider.dispatchEvent(new Event("input"));
+        if (ttsEnabled) {
+            ttsRateSlider.value = Math.min(4, Number(ttsRateSlider.value) + 0.1).toFixed(1);
+            ttsRateSlider.dispatchEvent(new Event("input"));
+        } else {
+            wpmSlider.value = Math.min(1000, Number(wpmSlider.value) + 10);
+            wpmSlider.dispatchEvent(new Event("input"));
+        }
     } else if (e.code === "ArrowDown") {
         e.preventDefault();
-        wpmSlider.value = Math.max(100, Number(wpmSlider.value) - 10);
-        wpmSlider.dispatchEvent(new Event("input"));
+        if (ttsEnabled) {
+            ttsRateSlider.value = Math.max(0.5, Number(ttsRateSlider.value) - 0.1).toFixed(1);
+            ttsRateSlider.dispatchEvent(new Event("input"));
+        } else {
+            wpmSlider.value = Math.max(100, Number(wpmSlider.value) - 10);
+            wpmSlider.dispatchEvent(new Event("input"));
+        }
     }
 });
 
@@ -1043,14 +1927,32 @@ document.addEventListener("keydown", (e) => {
 // evita o custo de start/stop a cada toggle, o no-op é barato.
 let currentSessionId = null;
 let heartbeatTimer = null;
+let backgroundSyncFailureNotified = false;
+
+function acknowledgeBackgroundSync(response) {
+    if (response?.ok) backgroundSyncFailureNotified = false;
+    return response;
+}
+
+function reportBackgroundSyncFailure() {
+    if (backgroundSyncFailureNotified) return;
+    backgroundSyncFailureNotified = true;
+    showToast("Não foi possível sincronizar o progresso. A leitura continua; confira a conexão antes de sair.", { error: true });
+}
 
 async function saveProgress(extraFields = {}) {
     if (!currentDocId) return;
-    await apiFetch(`/documents/${currentDocId}/progress`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ position: engine.pointer, ...extraFields }),
-    });
+    try {
+        const response = await apiFetch(`/documents/${currentDocId}/progress`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ position: engine.pointer, ...extraFields }),
+        });
+        if (response.status !== 401 && !response.ok) reportBackgroundSyncFailure();
+        acknowledgeBackgroundSync(response);
+    } catch {
+        reportBackgroundSyncFailure();
+    }
 }
 
 function startHeartbeatIfNeeded() {
@@ -1059,28 +1961,45 @@ function startHeartbeatIfNeeded() {
 }
 
 async function sendHeartbeat() {
-    if (!currentSessionId || !engine.playing) return;
-    await apiFetch(`/sessions/${currentSessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ end_pointer: engine.pointer, position: engine.pointer }),
-    });
+    // In narrator mode the audio element is the clock and engine.playing is
+    // intentionally false; either clock therefore keeps the session alive.
+    if (!currentSessionId || (!engine.playing && !ttsDriver.isPlaying())) return;
+    try {
+        const response = await apiFetch(`/sessions/${currentSessionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ end_pointer: engine.pointer, position: engine.pointer }),
+        });
+        if (response.status !== 401 && !response.ok) reportBackgroundSyncFailure();
+        acknowledgeBackgroundSync(response);
+    } catch {
+        reportBackgroundSyncFailure();
+    }
 }
 
 async function openSessionIfNeeded() {
     if (currentSessionId !== null || !currentDocId) return;
-    const res = await apiFetch("/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document_id: currentDocId, mode: activeMode, start_pointer: engine.pointer }),
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    // session_id vem null quando collect_stats está desligado — opt-out
-    // respeitado no momento de gravar, não só de listar.
-    if (data.session_id != null) {
-        currentSessionId = data.session_id;
-        startHeartbeatIfNeeded();
+    try {
+        const res = await apiFetch("/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ document_id: currentDocId, mode: activeMode, start_pointer: engine.pointer }),
+        });
+        if (res.status !== 401 && !res.ok) {
+            reportBackgroundSyncFailure();
+            return;
+        }
+        acknowledgeBackgroundSync(res);
+        if (!res.ok) return;
+        const data = await res.json();
+        // session_id vem null quando collect_stats está desligado — opt-out
+        // respeitado no momento de gravar, não só de listar.
+        if (data.session_id != null) {
+            currentSessionId = data.session_id;
+            startHeartbeatIfNeeded();
+        }
+    } catch {
+        reportBackgroundSyncFailure();
     }
 }
 
@@ -1090,17 +2009,23 @@ async function closeSession() {
     if (!currentSessionId) return;
     const sessionId = currentSessionId;
     currentSessionId = null;
-    const wpm = Number(wpmSlider.value) || 300;
-    await apiFetch(`/sessions/${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            end_pointer: engine.pointer,
-            position: engine.pointer,
-            ended_at: true,
-            avg_wpm: wpm,
-        }),
-    });
+    const wpm = ttsEnabled ? null : Number(wpmSlider.value) || 300;
+    try {
+        const response = await apiFetch(`/sessions/${sessionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                end_pointer: engine.pointer,
+                position: engine.pointer,
+                ended_at: true,
+                avg_wpm: wpm,
+            }),
+        });
+        if (response.status !== 401 && !response.ok) reportBackgroundSyncFailure();
+        acknowledgeBackgroundSync(response);
+    } catch {
+        reportBackgroundSyncFailure();
+    }
 }
 
 function resetSessionState() {
@@ -1109,25 +2034,445 @@ function resetSessionState() {
     currentSessionId = null;
 }
 
+// ---- Statistics dashboard (Fase 9) ----
+let statsScope = "me";
+let statsRequestId = 0;
+let statsAbortController = null;
+
+function cancelStatsRequest() {
+    statsRequestId += 1;
+    if (statsAbortController) statsAbortController.abort();
+    statsAbortController = null;
+}
+
+function formatStatNumber(value) {
+    return new Intl.NumberFormat("pt-BR").format(value || 0);
+}
+
+function formatReadingTime(seconds) {
+    const minutes = Math.round((seconds || 0) / 60);
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder ? `${hours}h ${remainder}min` : `${hours}h`;
+}
+
+function expandDailySeries(data) {
+    const values = new Map(data.daily.map((point) => [point.date, point.words]));
+    if (!data.daily.length && !data.period_days) return [];
+    const end = new Date(`${data.generated_at.slice(0, 10)}T00:00:00Z`);
+    let start;
+    if (data.period_days) {
+        start = new Date(end);
+        start.setUTCDate(start.getUTCDate() - data.period_days + 1);
+    } else {
+        start = new Date(`${data.daily[0].date}T00:00:00Z`);
+    }
+    const series = [];
+    for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        const key = cursor.toISOString().slice(0, 10);
+        series.push({ date: key, words: values.get(key) || 0 });
+    }
+    return series;
+}
+
+function renderDailyChart(data) {
+    const series = expandDailySeries(data);
+    statsDailyChart.textContent = "";
+    statsChartEmpty.hidden = series.some((point) => point.words > 0);
+    statsDailyChart.hidden = !statsChartEmpty.hidden;
+    if (statsDailyChart.hidden) return;
+
+    const ns = "http://www.w3.org/2000/svg";
+    const width = 720;
+    const height = 220;
+    const plotTop = 16;
+    const plotBottom = 190;
+    const maxWords = Math.max(...series.map((point) => point.words), 1);
+    [0, 0.5, 1].forEach((ratio) => {
+        const y = plotBottom - ratio * (plotBottom - plotTop);
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("x1", "44");
+        line.setAttribute("x2", String(width - 8));
+        line.setAttribute("y1", String(y));
+        line.setAttribute("y2", String(y));
+        line.setAttribute("class", "chart-grid");
+        statsDailyChart.appendChild(line);
+
+        const label = document.createElementNS(ns, "text");
+        label.setAttribute("x", "38");
+        label.setAttribute("y", String(y + 4));
+        label.setAttribute("text-anchor", "end");
+        label.setAttribute("class", "chart-label");
+        label.textContent = formatStatNumber(Math.round(maxWords * ratio));
+        statsDailyChart.appendChild(label);
+    });
+
+    const plotWidth = width - 56;
+    const step = plotWidth / series.length;
+    const barWidth = Math.max(0.8, step * 0.72);
+    series.forEach((point, index) => {
+        if (!point.words) return;
+        const barHeight = Math.max(2, (point.words / maxWords) * (plotBottom - plotTop));
+        const rect = document.createElementNS(ns, "rect");
+        rect.setAttribute("x", String(44 + index * step + (step - barWidth) / 2));
+        rect.setAttribute("y", String(plotBottom - barHeight));
+        rect.setAttribute("width", String(barWidth));
+        rect.setAttribute("height", String(barHeight));
+        rect.setAttribute("rx", String(Math.min(2, barWidth / 2)));
+        rect.setAttribute("class", "chart-bar");
+        const title = document.createElementNS(ns, "title");
+        title.textContent = `${point.date}: ${formatStatNumber(point.words)} palavras`;
+        rect.appendChild(title);
+        statsDailyChart.appendChild(rect);
+    });
+}
+
+function renderStats(data) {
+    const summary = data.summary;
+    statsWords.textContent = formatStatNumber(summary.words);
+    statsTime.textContent = formatReadingTime(summary.reading_seconds);
+    statsWpm.textContent = summary.avg_wpm == null ? "--" : `${formatStatNumber(Math.round(summary.avg_wpm))} WPM`;
+    statsStreak.textContent = `${summary.streak_days} ${summary.streak_days === 1 ? "dia" : "dias"}`;
+    statsCompletion.textContent = `${summary.completion_rate.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+    statsSessions.textContent = formatStatNumber(summary.sessions);
+    statsCollect.checked = data.collecting;
+    statsChartCaption.textContent = data.period_days ? `ultimos ${data.period_days} dias` : "todo o historico";
+    statsPrivacyNote.textContent = statsScope === "house"
+        ? `${data.participants} participante(s). Apenas perfis com coleta ativa entram nos totais; titulos privados nunca aparecem.`
+        : data.collecting
+            ? "Suas sessoes estao sendo registradas. A conclusao considera todo o seu historico."
+            : "A coleta esta pausada. Seu historico anterior continua visivel apenas para voce.";
+
+    renderDailyChart(data);
+
+    statsModes.textContent = "";
+    const maxModeWords = Math.max(...data.modes.map((mode) => mode.words), 1);
+    data.modes.forEach((mode) => {
+        const row = document.createElement("div");
+        row.className = "stats-mode-row";
+        const name = document.createElement("strong");
+        name.textContent = mode.mode === "focus" ? "Foco" : mode.mode === "flow" ? "Fluxo" : "Outro";
+        const track = document.createElement("div");
+        track.className = "stats-mode-track";
+        const fill = document.createElement("div");
+        fill.className = "stats-mode-fill";
+        fill.style.width = `${Math.max(2, mode.words / maxModeWords * 100)}%`;
+        track.appendChild(fill);
+        const value = document.createElement("span");
+        value.textContent = formatStatNumber(mode.words);
+        row.append(name, track, value);
+        statsModes.appendChild(row);
+    });
+    if (!data.modes.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-hint";
+        empty.textContent = "Nenhum modo registrado.";
+        statsModes.appendChild(empty);
+    }
+
+    statsDocuments.textContent = "";
+    data.documents.forEach((doc) => {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "stats-document-btn";
+        const title = document.createElement("span");
+        title.textContent = doc.title;
+        const words = document.createElement("strong");
+        words.textContent = formatStatNumber(doc.words);
+        const detail = document.createElement("small");
+        detail.textContent = `${formatReadingTime(doc.reading_seconds)} · ${doc.avg_wpm == null ? "sem WPM" : Math.round(doc.avg_wpm) + " WPM"}`;
+        button.append(title, words, detail);
+        button.addEventListener("click", () => showReader(doc.document_id));
+        item.appendChild(button);
+        statsDocuments.appendChild(item);
+    });
+    if (!data.documents.length) {
+        const empty = document.createElement("li");
+        empty.className = "empty-hint";
+        empty.textContent = "Nenhum documento neste periodo.";
+        statsDocuments.appendChild(empty);
+    }
+}
+
+async function fetchStats() {
+    cancelStatsRequest();
+    const requestId = statsRequestId;
+    statsAbortController = new AbortController();
+    statsErrorPanel.hidden = true;
+    statsLoading.hidden = false;
+    statsContent.setAttribute("aria-busy", "true");
+    try {
+        const res = await apiFetch(`/stats/dashboard?scope=${statsScope}&days=${statsPeriod.value}`, {
+            signal: statsAbortController.signal,
+        });
+        if (requestId !== statsRequestId || res.status === 401) return;
+        if (!res.ok) throw new Error(await apiErrorMessage(res, "Nao foi possivel carregar as estatisticas."));
+        renderStats(await res.json());
+    } catch (error) {
+        if (error.name !== "AbortError" && requestId === statsRequestId) {
+            statsError.textContent = error.message || "Nao foi possivel carregar as estatisticas.";
+            statsErrorPanel.hidden = false;
+        }
+    } finally {
+        if (requestId === statsRequestId) {
+            statsLoading.hidden = true;
+            statsContent.removeAttribute("aria-busy");
+            statsAbortController = null;
+        }
+    }
+}
+
+function showDashboard(push = true) {
+    cancelSystemRequest();
+    readerRequestId += 1;
+    cancelLibraryRequest();
+    if (currentDocId) {
+        saveProgress();
+        closeSession();
+    }
+    stopTtsForLifecycle();
+    engine.pause();
+    resetFlowState();
+    currentDocId = null;
+    loginView.hidden = true;
+    libraryView.hidden = true;
+    readerView.hidden = true;
+    systemView.hidden = true;
+    dashboardView.hidden = false;
+    fetchStats();
+    focusView(dashboardView, "Estatísticas de leitura");
+    if (push) history.pushState({ view: "stats" }, "", "#/stats");
+}
+
+statsBtn.addEventListener("click", () => showDashboard());
+dashboardBackBtn.addEventListener("click", () => history.back());
+statsPeriod.addEventListener("change", fetchStats);
+statsRetryBtn.addEventListener("click", fetchStats);
+statsScopeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+        statsScope = button.dataset.statsScope;
+        statsScopeButtons.forEach((candidate) => {
+            const active = candidate === button;
+            candidate.classList.toggle("active", active);
+            candidate.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        fetchStats();
+    });
+});
+statsCollect.addEventListener("change", async () => {
+    const enabled = statsCollect.checked;
+    statsCollect.disabled = true;
+    try {
+        const res = await apiFetch("/me/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ collect_stats: enabled }),
+        });
+        if (res.ok) {
+            localStorage.setItem(SETTINGS_PREFIX + "collectStats", enabled ? "1" : "0");
+            await fetchStats();
+        } else {
+            statsCollect.checked = !enabled;
+            statsError.textContent = await apiErrorMessage(res, "Não foi possível alterar a coleta.");
+            statsErrorPanel.hidden = false;
+        }
+    } catch {
+        statsCollect.checked = !enabled;
+        statsError.textContent = "Não foi possível alterar a coleta. Confira o servidor e tente novamente.";
+        statsErrorPanel.hidden = false;
+    } finally {
+        statsCollect.disabled = false;
+    }
+});
+// ---- System diagnostics (R8) ----
+let systemRequestId = 0;
+let systemAbortController = null;
+
+const SYSTEM_COMPONENT_LABELS = {
+    application: "Aplicação",
+    database: "Banco de dados",
+    kokoro: "Narrador Kokoro",
+    ollama: "Ollama",
+    transport: "Conexão",
+    internet: "Internet",
+};
+const SYSTEM_STATUS_LABELS = {
+    healthy: "Pronto",
+    degraded: "Atenção",
+    unavailable: "Indisponível",
+    not_required: "Não necessário",
+};
+
+function cancelSystemRequest() {
+    systemRequestId += 1;
+    if (systemAbortController) systemAbortController.abort();
+    systemAbortController = null;
+    systemLoading.hidden = true;
+    systemView.removeAttribute("aria-busy");
+    if (systemRefreshBtn.hasAttribute("aria-busy")) setButtonBusy(systemRefreshBtn, false);
+}
+
+function diagnosticDetailText(name, component) {
+    const details = component.details || {};
+    const parts = [];
+    if (name === "database" && Number.isInteger(details.schema_version)) {
+        parts.push(`schema ${details.schema_version}`);
+    }
+    if (name === "database" && typeof details.journal_mode === "string") {
+        parts.push(`journal ${details.journal_mode.toUpperCase()}`);
+    }
+    if (name === "transport") {
+        parts.push(details.https ? "HTTPS" : "HTTP local");
+        if (details.lan_enabled) parts.push("LAN ativa");
+    }
+    if (component.version) parts.push(`versão ${component.version}`);
+    if (Number.isInteger(component.latency_ms)) parts.push(`${component.latency_ms} ms`);
+    parts.push(component.required ? "essencial" : "opcional");
+    return parts.join(" · ");
+}
+
+function renderSystemDiagnostics(data) {
+    const healthy = data.status === "healthy";
+    const unhealthy = data.status === "unhealthy";
+    systemSummary.hidden = false;
+    systemOverallBadge.className = `health-badge ${data.status}`;
+    systemOverallBadge.textContent = unhealthy ? "Falha" : healthy ? "Tudo pronto" : "Modo degradado";
+    systemSummaryTitle.textContent = unhealthy
+        ? "Um componente essencial precisa de atenção"
+        : healthy
+            ? "Leitura Ligeira pronta para uso"
+            : "A leitura continua disponível";
+    systemSummaryMessage.textContent = unhealthy
+        ? "Revise os componentes abaixo antes de continuar."
+        : healthy
+            ? "Aplicação, dados e serviços locais responderam normalmente."
+            : "Serviços opcionais indisponíveis não bloqueiam biblioteca, Foco ou Fluxo.";
+    systemVersion.textContent = `Leitura Ligeira ${data.version}`;
+
+    systemComponents.replaceChildren();
+    Object.entries(data.components).forEach(([name, component]) => {
+        const card = document.createElement("article");
+        card.className = `system-component ${component.status}`;
+        card.setAttribute("role", "listitem");
+        const heading = document.createElement("div");
+        heading.className = "system-component-heading";
+        const title = document.createElement("h3");
+        title.textContent = SYSTEM_COMPONENT_LABELS[name] || name;
+        const badge = document.createElement("span");
+        badge.className = `health-badge ${component.status}`;
+        badge.textContent = SYSTEM_STATUS_LABELS[component.status] || component.status;
+        heading.append(title, badge);
+        const message = document.createElement("p");
+        message.textContent = component.message;
+        const details = document.createElement("small");
+        details.textContent = diagnosticDetailText(name, component);
+        card.append(heading, message, details);
+        systemComponents.appendChild(card);
+    });
+    const generated = new Date(data.generated_at);
+    systemGeneratedAt.textContent = Number.isNaN(generated.getTime())
+        ? ""
+        : `Verificado em ${generated.toLocaleString("pt-BR")}`;
+}
+
+async function fetchSystemDiagnostics() {
+    cancelSystemRequest();
+    const requestId = systemRequestId;
+    systemAbortController = new AbortController();
+    systemLoading.hidden = false;
+    systemErrorPanel.hidden = true;
+    systemSummary.hidden = true;
+    systemComponents.replaceChildren();
+    systemGeneratedAt.textContent = "";
+    systemView.setAttribute("aria-busy", "true");
+    setButtonBusy(systemRefreshBtn, true, "Verificando...");
+    try {
+        const response = await apiFetch("/system/diagnostics", {
+            signal: systemAbortController.signal,
+        });
+        if (requestId !== systemRequestId || response.status === 401) return;
+        if (!response.ok) {
+            throw new Error(await apiErrorMessage(response, "Não foi possível verificar os serviços locais."));
+        }
+        const data = await response.json();
+        if (requestId !== systemRequestId) return;
+        renderSystemDiagnostics(data);
+        announce("Diagnóstico do sistema atualizado");
+    } catch (error) {
+        if (error?.name !== "AbortError" && requestId === systemRequestId) {
+            systemError.textContent = `${error.message || "Não foi possível verificar os serviços locais."} Tente novamente.`;
+            systemErrorPanel.hidden = false;
+        }
+    } finally {
+        if (requestId === systemRequestId) {
+            systemAbortController = null;
+            systemLoading.hidden = true;
+            systemView.removeAttribute("aria-busy");
+            setButtonBusy(systemRefreshBtn, false);
+        }
+    }
+}
+
+function showSystem(push = true) {
+    cancelStatsRequest();
+    cancelLibraryRequest();
+    readerRequestId += 1;
+    if (currentDocId) {
+        saveProgress();
+        closeSession();
+    }
+    stopTtsForLifecycle();
+    engine.pause();
+    resetFlowState();
+    currentDocId = null;
+    loginView.hidden = true;
+    libraryView.hidden = true;
+    readerView.hidden = true;
+    dashboardView.hidden = true;
+    systemView.hidden = false;
+    fetchSystemDiagnostics();
+    focusView(systemView, "Sistema e diagnóstico");
+    if (push) history.pushState({ view: "system" }, "", "#/system");
+}
+
+systemBtn.addEventListener("click", () => showSystem());
+systemBackBtn.addEventListener("click", () => history.back());
+systemRefreshBtn.addEventListener("click", fetchSystemDiagnostics);
+systemRetryBtn.addEventListener("click", fetchSystemDiagnostics);
 // ---- Navigation ----
 // Real history entries (pushState) so the Android back gesture/button moves
 // reader → library instead of leaving the site, reloading inside the reader
 // (or following a #/read/{id}/{mode} link) opens straight to that document
 // and mode, and Fluxo→Foco→biblioteca pops one level at a time.
 function showLibrary(push = true) {
+    cancelStatsRequest();
+    cancelSystemRequest();
+    readerRequestId += 1;
     if (currentDocId) {
         saveProgress();
         closeSession();
     }
+    stopTtsForLifecycle();
     engine.pause();
+    resetFlowState();
     readerView.hidden = true;
+    dashboardView.hidden = true;
+    systemView.hidden = true;
+    loginView.hidden = true;
     libraryView.hidden = false;
     currentDocId = null;
     fetchLibrary();
+    focusView(libraryView, "Biblioteca");
     if (push) history.pushState({ view: "library" }, "", "#/");
 }
 
 async function showReader(id, push = true, mode = "focus") {
+    cancelStatsRequest();
+    cancelSystemRequest();
+    const requestId = ++readerRequestId;
+    cancelLibraryRequest();
     // Trocar de documento direto (via popstate entre duas leituras, sem
     // passar pela biblioteca) precisa fechar a sessão/salvar a posição do
     // documento anterior antes de carregar o novo.
@@ -1135,9 +2480,21 @@ async function showReader(id, push = true, mode = "focus") {
         saveProgress();
         closeSession();
     }
-    const res = await apiFetch(`/documents/${id}`);
+    stopTtsForLifecycle();
+    let res;
+    try {
+        res = await apiFetch(`/documents/${id}`);
+    } catch {
+        if (requestId === readerRequestId) {
+            showToast("Não foi possível abrir o documento. Confira o servidor e tente novamente.", { error: true });
+        }
+        return;
+    }
+    if (requestId !== readerRequestId) return;
     if (!res.ok) {
-        if (res.status !== 401) alert("Não foi possível carregar o documento.");
+        if (res.status !== 401) {
+            showToast(await apiErrorMessage(res, "Não foi possível abrir o documento. Tente novamente."), { error: true });
+        }
         return;
     }
     const doc = await res.json();
@@ -1153,6 +2510,9 @@ async function showReader(id, push = true, mode = "focus") {
     // every opening word to shrink to the minimum font size).
     libraryView.hidden = true;
     readerView.hidden = false;
+    dashboardView.hidden = true;
+    systemView.hidden = true;
+    loginView.hidden = true;
     activeMode = mode;
     setSetting("activeMode", mode);
     applyModeUI(mode);
@@ -1161,7 +2521,7 @@ async function showReader(id, push = true, mode = "focus") {
     updateOrpVisibility();
     updateSnapBackVisibility();
 
-    flowBuiltForTokens = null; // new document — Flow's cached spans are stale
+    resetFlowState(); // new document — clear Flow's cached spans, scroll and follow state
     engine.load(doc.raw_text);
     buildParagraphMarks(engine.getTokens());
     if (mode === "flow") {
@@ -1171,15 +2531,37 @@ async function showReader(id, push = true, mode = "focus") {
         ensureFlowBuilt();
         engine.rerender();
     }
+    configureTtsForDocument(id);
     refreshPlayButton();
+    focusView(readerView, `Leitor: ${doc.title}`);
     if (push) history.pushState({ view: "reader", id, mode }, "", `#/read/${id}/${mode}`);
 
     // Restaura a posição depois do load() (que sempre reseta o ponteiro pra
     // 0) — upsert lazy no servidor: cria a linha se não existir e promove
     // 'quero_ler' -> 'lendo' automaticamente, sem sobrescrever 'lido'/'abandonado'.
-    const progressRes = await apiFetch(`/documents/${id}/progress`);
+    let progressRes;
+    try {
+        progressRes = await apiFetch(`/documents/${id}/progress`);
+    } catch {
+        if (requestId === readerRequestId) {
+            showToast("O texto foi aberto, mas o progresso salvo não pôde ser recuperado.", { error: true });
+        }
+        return;
+    }
+    if (requestId !== readerRequestId) return;
     if (progressRes.ok) {
         const progress = await progressRes.json();
+        // O comentário histórico acima descrevia um upsert em GET. Desde R6,
+        // a leitura é pura e a promoção é este PUT protegido por CSRF.
+        if (progress.status === "quero_ler") {
+            const promoted = await apiFetch(`/documents/${id}/progress`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "lendo" }),
+            });
+            if (!promoted.ok || requestId !== readerRequestId) return;
+        }
+        if (requestId !== readerRequestId) return;
         // seekToIndex() já dispara _render() -> onChunk, que já sabe decidir
         // entre Foco/Fluxo — nenhuma chamada extra de highlight necessária.
         if (progress.position > 0) {
@@ -1196,12 +2578,26 @@ window.addEventListener("popstate", (e) => {
         } else {
             showReader(state.id, false, state.mode || "focus");
         }
+    } else if (state && state.view === "stats") {
+        showDashboard(false);
+    } else if (state && state.view === "system") {
+        showSystem(false);
     } else {
         showLibrary(false);
     }
 });
 
 function initFromLocation() {
+    if (location.hash === "#/stats") {
+        history.replaceState({ view: "stats" }, "", "#/stats");
+        showDashboard(false);
+        return;
+    }
+    if (location.hash === "#/system") {
+        history.replaceState({ view: "system" }, "", "#/system");
+        showSystem(false);
+        return;
+    }
     const match = location.hash.match(/^#\/read\/(\d+)(?:\/(focus|flow))?$/);
     if (match) {
         const id = Number(match[1]);
@@ -1225,22 +2621,29 @@ function estimatedMinutes(wordCount) {
 // Estado null (nunca aberto) mostra "— sem status —": placeholder só visual,
 // nunca enviado via PUT — evita fingir que uma escolha já foi feita quando
 // não existe linha em reading_progress ainda.
+function openLibraryDocument(doc) {
+    if (doc.progress_status === "abandonado") {
+        openAbandonedModal(doc);
+    } else {
+        showReader(doc.id);
+    }
+}
+
 function buildDocListItem(doc) {
     const manageable = canManage(doc);
-    const isAbandoned = doc.progress_status === "abandonado";
     const pct = doc.word_count && doc.progress_position != null
         ? Math.min(100, Math.round((doc.progress_position / doc.word_count) * 100))
         : 0;
 
     const li = document.createElement("li");
     li.innerHTML = `
-        <div class="doc-info">
-            <div class="doc-title"></div>
-            <div class="doc-meta"></div>
-            <div class="doc-progress-bar" ${doc.progress_status ? "" : "hidden"}>
-                <div class="doc-progress-fill" style="width: ${pct}%"></div>
-            </div>
-        </div>
+        <button class="doc-info" type="button">
+            <span class="doc-title"></span>
+            <span class="doc-meta"></span>
+            <span class="doc-progress-bar" ${doc.progress_status ? "" : "hidden"}>
+                <span class="doc-progress-fill" style="width: ${pct}%"></span>
+            </span>
+        </button>
         <div class="doc-actions">
             <select class="status-select" title="Status de leitura">
                 ${doc.progress_status ? "" : '<option value="" selected disabled>— sem status —</option>'}
@@ -1249,7 +2652,7 @@ function buildDocListItem(doc) {
                 <option value="lido" ${doc.progress_status === "lido" ? "selected" : ""}>✅ Lido</option>
                 <option value="abandonado" ${doc.progress_status === "abandonado" ? "selected" : ""}>🚫 Abandonado</option>
             </select>
-            ${manageable ? '<button class="icon-btn rename-btn" title="Renomear">✏️</button><button class="icon-btn delete-btn" title="Excluir">🗑️</button>' : ""}
+            ${manageable ? '<button class="icon-btn rename-btn" type="button" title="Renomear">✏️</button><button class="icon-btn delete-btn" type="button" title="Excluir">🗑️</button>' : ""}
         </div>
     `;
     li.querySelector(".doc-title").textContent = doc.title;
@@ -1258,27 +2661,47 @@ function buildDocListItem(doc) {
         `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
         `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}${privacyTag}`;
 
-    li.querySelector(".doc-info").addEventListener("click", () => {
-        if (isAbandoned) {
-            openAbandonedModal(doc);
-        } else {
-            showReader(doc.id);
-        }
-    });
-
-    li.querySelector(".status-select").addEventListener("change", async (e) => {
+    const docInfo = li.querySelector(".doc-info");
+    docInfo.setAttribute("aria-label", `Abrir ${doc.title}`);
+    docInfo.addEventListener("click", () => openLibraryDocument(doc));
+    const statusSelect = li.querySelector(".status-select");
+    statusSelect.setAttribute("aria-label", `Status de leitura de ${doc.title}`);
+    statusSelect.addEventListener("change", async (e) => {
         e.stopPropagation();
         const newStatus = e.target.value;
         if (!newStatus) return;
-        await apiFetch(`/documents/${doc.id}/progress`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: newStatus }),
-        });
-        fetchLibrary();
+        const previousStatus = doc.progress_status;
+        // Keep click behavior correct while the PUT/refetch is still in flight:
+        // marking as abandoned must protect the item immediately, in any shelf.
+        doc.progress_status = newStatus;
+        statusSelect.disabled = true;
+        try {
+            const res = await apiFetch(`/documents/${doc.id}/progress`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (!res.ok) {
+                doc.progress_status = previousStatus;
+                if (res.status !== 401) {
+                    showToast(await apiErrorMessage(res, "Não foi possível alterar a prateleira."), { error: true });
+                    fetchLibrary();
+                }
+                return;
+            }
+            fetchLibrary();
+        } catch {
+            doc.progress_status = previousStatus;
+            showToast("Não foi possível alterar a prateleira. Confira o servidor e tente novamente.", { error: true });
+            renderLibrary();
+        } finally {
+            if (statusSelect.isConnected) statusSelect.disabled = false;
+        }
     });
 
     if (manageable) {
+        li.querySelector(".rename-btn").setAttribute("aria-label", `Renomear ${doc.title}`);
+        li.querySelector(".delete-btn").setAttribute("aria-label", `Excluir ${doc.title}`);
         li.querySelector(".rename-btn").addEventListener("click", (e) => {
             e.stopPropagation();
             openEditDocModal(doc);
@@ -1300,6 +2723,8 @@ let currentShelf = "all";
 let currentCollection = "";
 let searchQuery = "";
 let searchDebounceTimer = null;
+let libraryRequestId = 0;
+let libraryAbortController = null;
 
 const SHELF_PREDICATES = {
     all: () => true,
@@ -1311,43 +2736,179 @@ const SHELF_PREDICATES = {
 
 function populateCollectionFilter() {
     const collections = [...new Set(allFetchedDocs.map((d) => d.collection).filter(Boolean))].sort();
-    const current = libraryCollectionFilter.value;
     libraryCollectionFilter.innerHTML =
         '<option value="">Todas as coleções</option>' +
         collections.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-    if (collections.includes(current)) libraryCollectionFilter.value = current;
+    if (collections.includes(currentCollection)) {
+        libraryCollectionFilter.value = currentCollection;
+    } else {
+        // Search results can remove the selected collection from the option
+        // list. Keep UI and state aligned instead of applying a hidden filter.
+        currentCollection = "";
+        libraryCollectionFilter.value = "";
+    }
     editDocCollectionList.innerHTML = collections.map((c) => `<option value="${escapeHtml(c)}"></option>`).join("");
 }
 
+let libraryStateMode = null;
+
+function updateShelfTabs(activeShelf = currentShelf) {
+    shelfTabButtons.forEach((button) => {
+        const active = button.dataset.shelf === activeShelf;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+        button.tabIndex = active ? 0 : -1;
+    });
+}
+
+function showLibraryState(mode, message = "") {
+    libraryStateMode = mode;
+    libraryEmpty.hidden = false;
+    libraryEmpty.setAttribute("role", mode === "error" ? "alert" : "status");
+    libraryOnboarding.hidden = mode !== "empty";
+    libraryStateSecondary.hidden = mode === "empty" || mode === "error";
+    const states = {
+        empty: {
+            icon: "❦",
+            eyebrow: "Primeiros passos",
+            title: "Sua estante está pronta",
+            message: "Adicione um texto e escolha Foco, Fluxo ou Narrador para começar.",
+            action: "Adicionar primeiro texto",
+        },
+        filtered: {
+            icon: "⌕",
+            eyebrow: "Busca e filtros",
+            title: "Nada por aqui",
+            message: message || "Nenhum documento corresponde aos filtros atuais.",
+            action: "Limpar busca e filtros",
+        },
+        error: {
+            icon: "!",
+            eyebrow: "Não foi possível atualizar",
+            title: "A estante não respondeu",
+            message: message || "Confira se o servidor continua ativo e tente novamente.",
+            action: "Tentar novamente",
+        },
+    };
+    const state = states[mode];
+    libraryStateIcon.textContent = state.icon;
+    libraryStateEyebrow.textContent = state.eyebrow;
+    libraryStateTitle.textContent = state.title;
+    libraryStateMessage.textContent = state.message;
+    libraryStatePrimary.textContent = state.action;
+    libraryStateSecondary.textContent = "Adicionar outro texto";
+}
+
+function hideLibraryState() {
+    libraryStateMode = null;
+    libraryEmpty.hidden = true;
+}
+
+function clearLibraryFilters() {
+    clearTimeout(searchDebounceTimer);
+    librarySearchInput.value = "";
+    searchQuery = "";
+    currentCollection = "";
+    libraryCollectionFilter.value = "";
+    currentShelf = "all";
+    updateShelfTabs();
+    fetchLibrary();
+    librarySearchInput.focus();
+}
+
+libraryStatePrimary.addEventListener("click", () => {
+    if (libraryStateMode === "empty") openModal();
+    else if (libraryStateMode === "error") fetchLibrary();
+    else clearLibraryFilters();
+});
+libraryStateSecondary.addEventListener("click", openModal);
+
 function renderLibrary() {
-    documentList.innerHTML = "";
+    documentList.replaceChildren();
     const predicate = SHELF_PREDICATES[currentShelf] || SHELF_PREDICATES.all;
     const filtered = allFetchedDocs.filter(
-        (d) => predicate(d) && (!currentCollection || d.collection === currentCollection)
+        (document) => predicate(document) && (!currentCollection || document.collection === currentCollection)
     );
-    if (allFetchedDocs.length === 0) {
-        libraryEmpty.textContent = "Nenhum texto ainda. Cole um texto para começar.";
-        libraryEmpty.hidden = false;
+    documentList.hidden = filtered.length === 0;
+    if (allFetchedDocs.length === 0 && !searchQuery) {
+        showLibraryState("empty");
     } else if (filtered.length === 0) {
-        libraryEmpty.textContent = "Nenhum documento encontrado com esse filtro.";
-        libraryEmpty.hidden = false;
+        showLibraryState(
+            "filtered",
+            searchQuery ? `Nenhum documento corresponde a “${searchQuery}”.` : "Nenhum documento corresponde à prateleira ou coleção escolhida.",
+        );
     } else {
-        libraryEmpty.hidden = true;
+        hideLibraryState();
     }
-    filtered.forEach((doc) => documentList.appendChild(buildDocListItem(doc)));
+    filtered.forEach((document) => documentList.appendChild(buildDocListItem(document)));
+}
+
+function cancelLibraryRequest() {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = null;
+    libraryRequestId++;
+    if (libraryAbortController) {
+        libraryAbortController.abort();
+        libraryAbortController = null;
+    }
+    libraryLoading.hidden = true;
+    documentList.setAttribute("aria-busy", "false");
+    libraryView.removeAttribute("aria-busy");
+}
+
+function resetLibraryState() {
+    cancelLibraryRequest();
+    allFetchedDocs = [];
+    currentShelf = "all";
+    currentCollection = "";
+    searchQuery = "";
+    librarySearchInput.value = "";
+    libraryCollectionFilter.value = "";
+    documentList.replaceChildren();
+    documentList.hidden = false;
+    hideLibraryState();
+    updateShelfTabs("all");
 }
 
 async function fetchLibrary() {
+    if (libraryAbortController) libraryAbortController.abort();
+    const requestId = ++libraryRequestId;
+    const controller = new AbortController();
+    libraryAbortController = controller;
     const url = searchQuery ? `/documents?q=${encodeURIComponent(searchQuery)}` : "/documents";
-    const res = await apiFetch(url);
-    if (!res.ok) return;
-    allFetchedDocs = await res.json();
-    populateCollectionFilter();
-    renderLibrary();
+    libraryView.setAttribute("aria-busy", "true");
+    documentList.setAttribute("aria-busy", "true");
+    libraryLoading.hidden = false;
+    try {
+        const res = await apiFetch(url, { signal: controller.signal });
+        if (requestId !== libraryRequestId || res.status === 401) return;
+        if (!res.ok) {
+            throw new Error(await apiErrorMessage(res, "Confira se o servidor continua ativo e tente novamente."));
+        }
+        const docs = await res.json();
+        if (requestId !== libraryRequestId) return;
+        allFetchedDocs = docs;
+        populateCollectionFilter();
+        renderLibrary();
+    } catch (error) {
+        if (error?.name === "AbortError" || requestId !== libraryRequestId) return;
+        documentList.replaceChildren();
+        documentList.hidden = true;
+        showLibraryState("error", error.message);
+    } finally {
+        if (requestId === libraryRequestId) {
+            libraryAbortController = null;
+            libraryLoading.hidden = true;
+            documentList.setAttribute("aria-busy", "false");
+            libraryView.removeAttribute("aria-busy");
+        }
+    }
 }
-
 librarySearchInput.addEventListener("input", () => {
     clearTimeout(searchDebounceTimer);
+    // Invalidate the current query immediately, not only after the 300ms
+    // debounce. Its late response must not repaint results for stale text.
+    cancelLibraryRequest();
     searchDebounceTimer = setTimeout(() => {
         searchQuery = librarySearchInput.value.trim();
         fetchLibrary();
@@ -1362,8 +2923,27 @@ libraryCollectionFilter.addEventListener("change", () => {
 shelfTabButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
         currentShelf = btn.dataset.shelf;
-        shelfTabButtons.forEach((b) => b.classList.toggle("active", b === btn));
+        shelfTabButtons.forEach((b) => {
+            const isActive = b === btn;
+            b.classList.toggle("active", isActive);
+            b.setAttribute("aria-selected", isActive ? "true" : "false");
+            b.tabIndex = isActive ? 0 : -1;
+        });
         renderLibrary();
+    });
+});
+
+shelfTabButtons.forEach((btn, index) => {
+    btn.addEventListener("keydown", (e) => {
+        let targetIndex = null;
+        if (e.key === "ArrowRight") targetIndex = (index + 1) % shelfTabButtons.length;
+        if (e.key === "ArrowLeft") targetIndex = (index - 1 + shelfTabButtons.length) % shelfTabButtons.length;
+        if (e.key === "Home") targetIndex = 0;
+        if (e.key === "End") targetIndex = shelfTabButtons.length - 1;
+        if (targetIndex === null) return;
+        e.preventDefault();
+        shelfTabButtons[targetIndex].focus();
+        shelfTabButtons[targetIndex].click();
     });
 });
 
@@ -1376,33 +2956,46 @@ let abandonedModalDoc = null;
 function openAbandonedModal(doc) {
     abandonedModalDoc = doc;
     abandonedModalTitle.textContent = doc.title;
-    abandonedModal.hidden = false;
+    openDialog(abandonedModal, abandonedResumeBtn);
 }
 function closeAbandonedModal() {
-    abandonedModal.hidden = true;
+    closeDialog(abandonedModal);
     abandonedModalDoc = null;
 }
 abandonedModal.addEventListener("click", (e) => {
     if (e.target === abandonedModal) closeAbandonedModal();
 });
 
-async function resolveAbandonedAndOpen(newStatus) {
+async function resolveAbandonedAndOpen(newStatus, button) {
     const doc = abandonedModalDoc;
-    closeAbandonedModal();
     if (!doc) return;
-    if (newStatus) {
-        await apiFetch(`/documents/${doc.id}/progress`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: newStatus }),
-        });
+    setButtonBusy(button, true, "Aguarde...");
+    try {
+        if (newStatus) {
+            const response = await apiFetch(`/documents/${doc.id}/progress`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (!response.ok) {
+                if (response.status !== 401) {
+                    showToast(await apiErrorMessage(response, "Não foi possível atualizar a prateleira."), { error: true });
+                }
+                return;
+            }
+        }
+        closeAbandonedModal();
+        showReader(doc.id);
+    } catch {
+        showToast("Não foi possível atualizar a prateleira. Confira o servidor e tente novamente.", { error: true });
+    } finally {
+        setButtonBusy(button, false);
     }
-    showReader(doc.id);
 }
 
-abandonedResumeBtn.addEventListener("click", () => resolveAbandonedAndOpen("lendo"));
-abandonedWishlistBtn.addEventListener("click", () => resolveAbandonedAndOpen("quero_ler"));
-abandonedKeepBtn.addEventListener("click", () => resolveAbandonedAndOpen(null));
+abandonedResumeBtn.addEventListener("click", () => resolveAbandonedAndOpen("lendo", abandonedResumeBtn));
+abandonedWishlistBtn.addEventListener("click", () => resolveAbandonedAndOpen("quero_ler", abandonedWishlistBtn));
+abandonedKeepBtn.addEventListener("click", () => resolveAbandonedAndOpen(null, abandonedKeepBtn));
 
 // ---- Editar documento (título + coleção) — Fase 7, substitui window.prompt ----
 let editDocTarget = null;
@@ -1411,12 +3004,11 @@ function openEditDocModal(doc) {
     editDocTarget = doc;
     editDocTitleInput.value = doc.title;
     editDocCollectionInput.value = doc.collection || "";
-    editDocError.hidden = true;
-    editDocModal.hidden = false;
-    editDocTitleInput.focus();
+    clearFieldError(editDocError, [editDocTitleInput, editDocCollectionInput]);
+    openDialog(editDocModal, editDocTitleInput);
 }
 function closeEditDocModal() {
-    editDocModal.hidden = true;
+    closeDialog(editDocModal);
     editDocTarget = null;
 }
 editDocCancelBtn.addEventListener("click", closeEditDocModal);
@@ -1429,35 +3021,56 @@ editDocSaveBtn.addEventListener("click", async () => {
     if (!doc) return;
     const title = editDocTitleInput.value.trim();
     if (!title) {
-        editDocError.textContent = "Título não pode ser vazio.";
-        editDocError.hidden = false;
+        showFieldError(editDocError, "Título não pode ser vazio.", [editDocTitleInput]);
         return;
     }
-    const res = await apiFetch(`/documents/${doc.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, collection: editDocCollectionInput.value.trim() }),
-    });
-    if (!res.ok) {
-        if (res.status === 401) return;
-        editDocError.textContent = await apiErrorMessage(res, "Falha ao salvar o documento.");
-        editDocError.hidden = false;
-        return;
+    clearFieldError(editDocError, [editDocTitleInput, editDocCollectionInput]);
+    setButtonBusy(editDocSaveBtn, true, "Salvando...");
+    try {
+        const res = await apiFetch(`/documents/${doc.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, collection: editDocCollectionInput.value.trim() }),
+        });
+        if (!res.ok) {
+            if (res.status === 401) return;
+            showFieldError(
+                editDocError,
+                await apiErrorMessage(res, "Falha ao salvar o documento."),
+                [editDocTitleInput, editDocCollectionInput],
+            );
+            return;
+        }
+        closeEditDocModal();
+        fetchLibrary();
+        showToast("Documento atualizado.");
+    } catch {
+        showFieldError(
+            editDocError,
+            "Não foi possível salvar. Confira o servidor e tente novamente.",
+            [editDocTitleInput, editDocCollectionInput],
+        );
+    } finally {
+        setButtonBusy(editDocSaveBtn, false);
     }
-    closeEditDocModal();
-    fetchLibrary();
 });
-
 async function deleteDocument(doc) {
     if (!window.confirm(`Excluir "${doc.title}"? Essa ação não pode ser desfeita.`)) {
         return;
     }
-    const res = await apiFetch(`/documents/${doc.id}`, { method: "DELETE" });
-    if (!res.ok) {
-        if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao excluir o documento."));
-        return;
+    try {
+        const res = await apiFetch(`/documents/${doc.id}`, { method: "DELETE" });
+        if (!res.ok) {
+            if (res.status !== 401) {
+                showToast(await apiErrorMessage(res, "Falha ao excluir o documento."), { error: true });
+            }
+            return;
+        }
+        fetchLibrary();
+        showToast("Documento excluído.");
+    } catch {
+        showToast("Não foi possível excluir. Confira o servidor e tente novamente.", { error: true });
     }
-    fetchLibrary();
 }
 
 // ---- New document modal (Fase 6: três abas — colar/arquivo/URL) ----
@@ -1467,7 +3080,12 @@ const DOC_TAB_BUTTONS = [docTabPasteBtn, docTabFileBtn, docTabUrlBtn];
 
 function switchDocTab(tab) {
     activeDocTab = tab;
-    DOC_TAB_BUTTONS.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
+    DOC_TAB_BUTTONS.forEach((button) => {
+        const active = button.dataset.tab === tab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+        button.tabIndex = active ? 0 : -1;
+    });
     Object.entries(DOC_TAB_PANELS).forEach(([key, panel]) => {
         panel.hidden = key !== tab;
     });
@@ -1475,10 +3093,32 @@ function switchDocTab(tab) {
 docTabPasteBtn.addEventListener("click", () => switchDocTab("paste"));
 docTabFileBtn.addEventListener("click", () => switchDocTab("file"));
 docTabUrlBtn.addEventListener("click", () => switchDocTab("url"));
+DOC_TAB_BUTTONS.forEach((button, index) => {
+    button.addEventListener("keydown", (event) => {
+        let targetIndex = null;
+        if (event.key === "ArrowRight") targetIndex = (index + 1) % DOC_TAB_BUTTONS.length;
+        if (event.key === "ArrowLeft") targetIndex = (index - 1 + DOC_TAB_BUTTONS.length) % DOC_TAB_BUTTONS.length;
+        if (event.key === "Home") targetIndex = 0;
+        if (event.key === "End") targetIndex = DOC_TAB_BUTTONS.length - 1;
+        if (targetIndex === null) return;
+        event.preventDefault();
+        DOC_TAB_BUTTONS[targetIndex].focus();
+        DOC_TAB_BUTTONS[targetIndex].click();
+    });
+});
 
-function showDocError(message) {
-    docError.textContent = message;
-    docError.hidden = false;
+const DOC_FORM_CONTROLS = [
+    docTitleInput,
+    docTextInput,
+    docFileTitleInput,
+    docFileInput,
+    docUrlTitleInput,
+    docUrlInput,
+    docPrivateInput,
+];
+
+function showDocError(message, controls = DOC_FORM_CONTROLS) {
+    showFieldError(docError, message, controls);
 }
 
 function openModal() {
@@ -1489,13 +3129,12 @@ function openModal() {
     docUrlTitleInput.value = "";
     docUrlInput.value = "";
     docPrivateInput.checked = false;
-    docError.hidden = true;
+    clearFieldError(docError, DOC_FORM_CONTROLS);
     switchDocTab("paste");
-    newDocModal.hidden = false;
-    docTitleInput.focus();
+    openDialog(newDocModal, docTitleInput);
 }
 function closeModal() {
-    newDocModal.hidden = true;
+    closeDialog(newDocModal);
 }
 
 newDocBtn.addEventListener("click", openModal);
@@ -1511,26 +3150,28 @@ docTitleInput.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    if (!shortcutsModal.hidden) closeShortcuts();
     if (!newDocModal.hidden) closeModal();
     if (!loginModal.hidden) closeLoginModal();
     if (!newProfileModal.hidden) closeNewProfileModal();
     if (!abandonedModal.hidden) closeAbandonedModal();
     if (!editDocModal.hidden) closeEditDocModal();
+    if (!tocDropdown.hidden) closeTocDropdown({ restoreFocus: true });
 });
 
 saveDocBtn.addEventListener("click", async () => {
-    docError.hidden = true;
+    clearFieldError(docError, DOC_FORM_CONTROLS);
     const visibility = docPrivateInput.checked ? "private" : "house";
-    let res;
+    let makeRequest;
 
     if (activeDocTab === "paste") {
         const text = docTextInput.value.trim();
         if (!text) {
-            showDocError("Cole algum texto antes de salvar.");
+            showDocError("Cole algum texto antes de salvar.", [docTextInput]);
             return;
         }
         const title = docTitleInput.value.trim() || text.slice(0, 40);
-        res = await apiFetch("/documents", {
+        makeRequest = () => apiFetch("/documents", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title, raw_text: text, visibility }),
@@ -1538,7 +3179,7 @@ saveDocBtn.addEventListener("click", async () => {
     } else if (activeDocTab === "file") {
         const file = docFileInput.files[0];
         if (!file) {
-            showDocError("Escolha um arquivo.");
+            showDocError("Escolha um arquivo.", [docFileInput]);
             return;
         }
         const formData = new FormData();
@@ -1547,46 +3188,59 @@ saveDocBtn.addEventListener("click", async () => {
         formData.append("visibility", visibility);
         // Sem Content-Type explícito — o navegador define o boundary do
         // multipart sozinho; setar manualmente quebraria o parsing no servidor.
-        res = await apiFetch("/documents/upload", { method: "POST", body: formData });
+        makeRequest = () => apiFetch("/documents/upload", { method: "POST", body: formData });
     } else {
         const url = docUrlInput.value.trim();
         if (!url) {
-            showDocError("Cole uma URL.");
+            showDocError("Cole uma URL.", [docUrlInput]);
             return;
         }
-        res = await apiFetch("/documents/url", {
+        makeRequest = () => apiFetch("/documents/url", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url, title: docUrlTitleInput.value.trim(), visibility }),
         });
     }
 
-    if (!res.ok) {
-        if (res.status !== 401) showDocError(await apiErrorMessage(res, "Falha ao salvar o documento."));
-        return;
+    setButtonBusy(saveDocBtn, true, activeDocTab === "file" ? "Importando..." : "Salvando...");
+    try {
+        const res = await makeRequest();
+        if (!res.ok) {
+            if (res.status !== 401) {
+                showDocError(await apiErrorMessage(res, "Falha ao salvar o documento."));
+            }
+            return;
+        }
+        const doc = await res.json();
+        closeModal();
+        showReader(doc.id);
+    } catch {
+        showDocError("Não foi possível salvar. Confira o servidor, o arquivo ou a URL e tente novamente.");
+    } finally {
+        setButtonBusy(saveDocBtn, false);
     }
-    const doc = await res.json();
-    closeModal();
-    showReader(doc.id);
 });
-
 // ---- TOC (Fase 6) — botão "≡ Capítulos" na topbar do leitor ----
 let currentToc = null;
 
 function renderToc(toc) {
     currentToc = toc;
     tocBtn.hidden = !toc || toc.length === 0;
-    tocList.innerHTML = "";
+    tocList.replaceChildren();
     if (!toc) return;
     toc.forEach((entry) => {
         const li = document.createElement("li");
-        li.textContent = entry.title;
-        li.addEventListener("click", () => {
-            engine.seekToIndex(entry.token_index);
-            refreshPlayButton();
-            saveProgress();
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "toc-entry-btn";
+        button.textContent = entry.title;
+        button.addEventListener("click", async () => {
             closeTocDropdown();
+            await navigateToToken(entry.token_index);
+            announceReaderPosition("Capítulo " + entry.title);
+            saveProgress();
         });
+        li.appendChild(button);
         tocList.appendChild(li);
     });
 }
@@ -1594,9 +3248,14 @@ function renderToc(toc) {
 function openTocDropdown() {
     if (!currentToc) return;
     tocDropdown.hidden = false;
+    tocBtn.setAttribute("aria-expanded", "true");
+    requestAnimationFrame(() => tocList.querySelector("button")?.focus());
 }
-function closeTocDropdown() {
+function closeTocDropdown({ restoreFocus = false } = {}) {
+    if (tocDropdown.hidden) return;
     tocDropdown.hidden = true;
+    tocBtn.setAttribute("aria-expanded", "false");
+    if (restoreFocus) tocBtn.focus();
 }
 tocBtn.addEventListener("click", () => {
     if (tocDropdown.hidden) openTocDropdown();
