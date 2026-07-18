@@ -1,39 +1,36 @@
 # Leitura Ligeira
 
-Leitor de leitura rápida self-hosted para a rede de casa. Dois jeitos de ler:
-**Focus** (RSVP — palavras piscando em posição fixa, com micro-pausas
-inteligentes) e **Flow** (texto completo com a marca acompanhando a palavra —
-em formalização). Roda no PC, acessado pelo celular via Wi-Fi como web app
-comum.
+Leitor de leitura rápida self-hosted para o computador e a rede doméstica.
+Oferece **Foco** (RSVP em posição fixa), **Fluxo** (texto completo com marcação
+sincronizada) e **Narrador** local via Kokoro. A biblioteca organiza textos,
+PDF, EPUB e páginas web por busca, coleções e prateleiras, com perfis separados.
 
-Backend em Python/FastAPI, frontend em JS puro (sem build step), SQLite como
-banco. Veja o [ROADMAP.md](ROADMAP.md) para arquitetura, fases, decisões de
-design registradas e as questões em aberto.
+Backend em Python/FastAPI, frontend em HTML, CSS e JavaScript puro, SQLite como
+banco e nenhum build step. Veja o [ROADMAP.md](ROADMAP.md) para decisões e a
+sequência da Release 1.0.
 
 ## Status (2026-07-18): missão Release 1.0
 
-O que funciona hoje:
+O produto está funcionalmente congelado e atravessou os gates R1–R8. Hoje há:
 
-- **Leitor RSVP (Focus):** WPM efetivo 100–1000 (o número do slider é
-  throughput real), palavras por vez 1–4 sem cruzar fronteira de
-  frase/parágrafo, micro-pausas por pontuação/palavra longa/parágrafo, ORP
-  opcional (letra-âncora), shrink-to-fit para palavras longas, tema
-  claro/escuro, Wake Lock (tela não apaga lendo), tap para play/pause,
-  atalhos de teclado (Espaço, setas), navegação por frase (⏮/⏭).
-- **Navegação no texto:** painel com o texto completo — toque em qualquer
-  palavra para pular exatamente para ela; palavra atual destacada com
-  rolagem automática ("modo seguir"); barra de transporte própria no painel;
-  barra de progresso arrastável (scrubber) com marcadores de parágrafo;
-  contador vivo de palavras/tempo restante.
-- **Biblioteca da casa:** colar texto, dedupe automático por conteúdo,
-  renomear/excluir, contagem de palavras e tempo estimado por item.
+- leitura Foco/Fluxo com progresso, navegação por texto/capítulos, ORP,
+  controles independentes, Wake Lock e atalhos de teclado;
+- narração Kokoro sincronizada de 0,5× a 4,0×, vozes identificadas por idioma,
+  buffer configurável e degradação segura quando o serviço não está disponível;
+- perfis com sessão revogável, documentos privados/da casa, importação
+  TXT/PDF/EPUB/URL, busca reativa, coleções e prateleiras;
+- estatísticas opt-in, duas skins, tema claro/escuro, onboarding e estados
+  acionáveis de carregamento, vazio e erro;
+- tela **Sistema** com versão, banco, transporte, Kokoro, Ollama e indicação do
+  que é essencial ou opcional;
+- HTTPS local opcional, backup/restauração verificável, ambiente congelado,
+  migrações transacionais, hardening OWASP e um gate automatizado de release.
 
-**A seguir** (ver ROADMAP): modos Focus/Flow formais com WPM independente por
-modo; contas da casa com login (senha simples, sem exigência de
-complexidade), permissões por documento (dono/concedido/admin), prateleiras
-de leitura (quero ler/lendo/lido/abandonado), progresso e estatísticas
-individuais; biblioteca compartilhada com opção de documento privado; import
-de PDF/EPUB/URL; TTS local sincronizado (Kokoro) nos dois modos.
+A release internacional agora exige os gates R9–R14: leitores de tela e
+semântica; baixa visão/mobilidade; neurodiversidade; equivalência auditiva;
+internacionalização com novo nome e inglês padrão; e auditoria humana final.
+O próximo gate é **R9 — tecnologias assistivas**. A versão `1.0.0-rc1` só será
+gerada no R14, depois da tradução/rebranding do R13.
 
 **Nota sobre WPM:** o número no slider é o throughput *efetivo* — palavras
 por minuto reais, já descontando as micro-pausas. Se você calibrou sua
@@ -125,8 +122,9 @@ Antes de publicar ou aceitar uma alteração como candidata à release, execute:
 
 O comando valida o lock do ambiente, roda toda a suíte Python, compila os
 módulos, executa `pip check`, verifica a sintaxe JavaScript, os contratos entre
-HTML/CSS/JS, a regressão do driver TTS, um soak determinístico de 6.000 tokens
-em 4x, o Compose e a integridade do SQLite. O processo retorna código diferente
+HTML/CSS/JS, acessibilidade/contraste/reflow essenciais, a regressão do driver
+TTS, um soak determinístico de 6.000 tokens em 4x, o Compose e a integridade do
+SQLite. O processo retorna código diferente
 de zero na primeira falha e grava um relatório JSON atômico em
 `release-reports/`. Em uma máquina deliberadamente sem Docker, use
 `.\verificar_release.bat --skip-docker`; todos os demais gates continuam
@@ -148,6 +146,23 @@ pode ser ajustado de 30 a 120 segundos (60s por padrão).
 Quem roda o FastAPI nativamente não precisa configurar variável alguma; o
 default já é `http://localhost:8880`. Dentro do Compose, `KOKORO_URL` é definido
 como `http://tts:8880` automaticamente.
+
+## Primeiros passos na interface
+
+1. Crie um perfil e use uma frase-senha exclusiva com pelo menos 8 caracteres.
+2. Em **+ Novo texto**, cole conteúdo ou escolha arquivo/URL. A tela vazia da
+   biblioteca também conduz por esses passos.
+3. Abra o documento e escolha **Foco**, **Fluxo** ou **Narrador**. Velocidade,
+   fonte, voz e buffer podem ser calibrados durante a leitura.
+4. Use **Sistema** para conferir a saúde local. Falhas de Kokoro/Ollama são
+   opcionais; banco ou aplicação indisponíveis exigem correção antes de ler.
+
+Pressione `Shift+?` ou use o botão **Atalhos** para abrir a referência de
+teclado. `Tab` percorre controles, `Enter`/`Espaço` acionam itens focados e o
+scrubber aceita setas, `Page Up/Down`, `Home` e `End`. Os diálogos prendem o foco
+enquanto abertos e `Esc` os fecha. O navegador também pode oferecer **Instalar
+aplicativo/Adicionar à tela inicial** graças ao manifest; isso cria um atalho,
+mas o modo offline completo permanece planejado para depois da release.
 
 ## Rodando com Docker Compose
 
@@ -206,6 +221,30 @@ anterior. O diretório migrado ainda será preservado com sufixo `pre-restore`:
 
 Não apague o ZIP até validar login, biblioteca e abertura de um documento. Ele
 contém o banco e a chave de sessão e deve ser protegido como dado sensível.
+
+## Atualização segura
+
+Antes de atualizar, encerre o servidor e crie um backup verificável:
+
+```powershell
+.\backup_leitura_ligeira.bat
+.\verificar_release.bat
+```
+
+Em uma instalação Git sem alterações locais de produção:
+
+```powershell
+git pull --ff-only
+.venv\Scripts\python.exe -m pip install -r requirements.lock
+.\verificar_ambiente.bat
+.\iniciar_leitura_ligeira.bat
+```
+
+A primeira inicialização aplica migrações somente depois de criar um backup
+pré-migração verificado. Confirme login, biblioteca e abertura de um documento;
+depois execute `.\verificar_release.bat`. Se houver regressão de dados,
+encerre o servidor e restaure o ZIP pré-migração conforme a seção anterior. Não
+faça downgrade de código sobre um banco com `user_version` mais novo.
 
 ## HTTPS local opcional
 
@@ -279,6 +318,29 @@ ou escrita fora de `/app/data` e `/tmp`. Exposição deliberada pelo Compose:
 $env:LEITURA_BIND_ADDRESS = '0.0.0.0'
 docker compose up -d
 ```
+
+## Solução de problemas
+
+- **Porta 8000 ocupada:** o inicializador distingue outra instância do Leitura
+  Ligeira de um programa estranho. Encerre a instância anterior ou use
+  `.\iniciar_leitura_ligeira.bat --port 8001`.
+- **`SSL_ERROR_RX_RECORD_TOO_LONG`:** o navegador abriu `https://` enquanto o
+  servidor está em HTTP. Use exatamente a URL mostrada pelo inicializador ou
+  configure o par de certificados; `--no-https` força o modo HTTP.
+- **Narrador indisponível/HTTP 500:** a leitura Foco/Fluxo continua funcionando.
+  Confira `docker compose ps`, depois `docker compose logs --tail 100 tts` e use
+  **Tentar Narrador** após o contêiner ficar saudável.
+- **Docker não inicia:** abra o Docker Desktop e aguarde o Engine. O aplicativo
+  nativo ainda pode ser iniciado sem narrador; Kokoro não bloqueia a biblioteca.
+- **Ollama indisponível:** nenhuma função da Release 1.0 depende dele. O estado
+  aparece como opcional na tela **Sistema**.
+- **Banco ou aplicação degradados:** abra **Sistema**, atualize o diagnóstico e
+  rode `.\verificar_ambiente.bat`. Faça backup antes de qualquer restauração;
+  use `check_database()` da seção de migrações para confirmar integridade.
+- **Interface desatualizada após upgrade:** recarregue ignorando o cache
+  (`Ctrl+F5`). Se o problema persistir, confirme a versão exibida em **Sistema**
+  e execute o gate de release.
+
 ## Limitações conhecidas
 
 - **HTTP continua disponível para LAN confiável.** As demais proteções da

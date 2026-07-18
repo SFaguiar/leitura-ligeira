@@ -40,6 +40,7 @@ class ReleaseGateTests(unittest.TestCase):
             "js-app-syntax",
             "tts-regression",
             "frontend-contract",
+            "frontend-accessibility",
             "tts-4x-soak",
             "git-whitespace",
             "git-staged-whitespace",

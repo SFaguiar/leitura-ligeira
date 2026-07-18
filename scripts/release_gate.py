@@ -52,6 +52,11 @@ def build_steps(*, include_docker: bool = True) -> list[GateStep]:
         GateStep("js-app-syntax", (node, "--check", "static/js/app.js"), 30),
         GateStep("tts-regression", (node, "tests/tts_driver_test.mjs"), 60),
         GateStep("frontend-contract", (node, "tests/frontend_contract_test.mjs"), 60),
+        GateStep(
+            "frontend-accessibility",
+            (node, "tests/frontend_accessibility_test.mjs"),
+            60,
+        ),
         GateStep("tts-4x-soak", (node, "tests/tts_soak_test.mjs"), 120),
         GateStep("git-whitespace", (git, "diff", "--check"), 30),
         GateStep("git-staged-whitespace", (git, "diff", "--cached", "--check"), 30),

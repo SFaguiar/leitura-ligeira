@@ -1117,8 +1117,15 @@ histórico o dashboard terá no lançamento).*
 ### MISSÃO RELEASE 1.0 — prioridade absoluta
 
 > **Congelamento funcional:** a partir desta decisão, nenhuma nova feature das
-> Fases 10–28 entra antes da release. Correções de regressão, segurança,
-> confiabilidade, acessibilidade essencial e documentação continuam permitidas.
+> Fases 10–28 entra antes da release, exceto as capacidades de acessibilidade e
+> neurodiversidade explicitamente promovidas para R9–R13. Correções de
+> regressão, segurança, confiabilidade, tradução e documentação permanecem
+> permitidas.
+>
+> **Decisão internacional de 2026-07-18:** WCAG 2.2 AA, avaliação humana e
+> tecnologias assistivas passam a bloquear a Release 1.0. O último gate de
+> implementação será R13: novo nome internacional, inglês padrão e pt-BR
+> completo. R14 é exclusivamente revisão final, RC, soak e publicação.
 
 A release será conduzida pelos gates abaixo, nesta ordem. Um gate só avança
 depois de implementação completa, testes proporcionais ao risco e registro no
@@ -1282,7 +1289,7 @@ o Uvicorn. A automação visual do navegador não abriu por falha do runtime do
 plugin; os contratos DOM e os fluxos reais de processo/API cobrem este gate,
 mantendo a auditoria visual aprofundada no R8.
 
-#### [ ] R8 — Polimento essencial de produto
+#### [x] R8 — Polimento essencial de produto *(encerrado em 2026-07-18)*
 - Onboarding curto, estados vazios, carregamentos e erros acionáveis.
 - Tela Sistema/Diagnóstico com versão e saúde dos serviços.
 - Overlay de atalhos Shift+?, favicon, ícones, título e manifest básicos.
@@ -1291,23 +1298,177 @@ mantendo a auditoria visual aprofundada no R8.
 - Documentação de instalação, atualização, backup, restauração e solução de
   problemas.
 
-#### [ ] R9 — Release candidate e publicação
-- Gerar 1.0.0-rc1, com changelog e procedimento de rollback.
-- Usar por alguns dias em pelo menos dois dispositivos; durante o soak entram
-  apenas correções de regressão.
-- Repetir todos os gates, criar tag v1.0.0 e publicar os artefatos.
+**Implementado e validado:** a biblioteca passou a distinguir onboarding,
+filtro vazio, carregamento e falha recuperável; ações assíncronas importantes
+têm estado ocupado, rollback ou repetição, e falhas de sincronização em segundo
+plano não interrompem a leitura. A nova view **Sistema** consome o diagnóstico
+autenticado com cancelamento/request ID e apresenta seis componentes sem expor
+detalhes internos. Shift+? abre um diálogo de atalhos; skip link, foco inicial,
+focus trap, navegação por teclado, scrubber semântico, regiões live e Escape
+cobrem o fluxo essencial. O zoom deixou de ser bloqueado, alvos têm 44 px,
+`prefers-reduced-motion` desativa animações e os pares de texto auditados nas
+duas skins superam 4,5:1. Favicon SVG e manifest instalável foram adicionados,
+sem prometer funcionamento offline.
 
-**Critério de saída:** HTTPS opcional funcional, backup restaurado de verdade,
-ambiente reproduzível, migrações seguras, dependências degradando sem queda,
-hardening revisado, suíte de release verde e RC validada em dois dispositivos.
+A validação renderizada em Edge headless percorreu login, onboarding, Foco,
+Fluxo, biblioteca e Sistema nas duas skins. Em 390×844 o documento manteve
+`scrollWidth=390`, o diagnóstico retornou seis componentes e não houve exceção
+JavaScript; o único 401 observado foi a sondagem pública esperada de `/me`
+antes do login. O harness de acessibilidade confirma seis diálogos, sete pares
+de contraste, sem bloqueio de zoom e sem `alert()`. README agora cobre primeiros
+passos, atualização segura e solução de problemas. O gate final aprovou 62 testes
+Python, 164 contratos frontend, acessibilidade, regressão/soak TTS, Compose e
+SQLite v2/WAL; evidência em `release-gate-20260718T212837.json`.
+
+#### [ ] R9 — Semântica, leitores de tela e tecnologias assistivas
+
+**Meta normativa:** todas as páginas completas, estados responsivos, skins e
+locales devem atender WCAG 2.2 níveis A e AA. Automação ajuda, mas não encerra
+o gate sem avaliação humana.
+
+- Auditar landmarks, hierarquia de headings, ordem de leitura, nomes e
+  descrições acessíveis, relações label/erro/ajuda e conteúdo não textual.
+- Revisar todas as mudanças dinâmicas: foco previsível, `aria-live` sem excesso,
+  estados busy/expanded/selected/pressed e anúncios de TTS/progresso.
+- Garantir alternativas semanticamente equivalentes ao RSVP rápido: o leitor
+  de tela nunca será obrigado a acompanhar uma palavra piscando por vez.
+- Executar todos os fluxos sem visão com NVDA e JAWS no Windows, VoiceOver em
+  Apple e TalkBack no Android: criar/login, importar, buscar, organizar, abrir,
+  navegar, Foco/Fluxo/TTS, progresso, Sistema, configurações e logout.
+- Automatizar regras testáveis com ferramenta local reconhecida, sem adicionar
+  framework ao frontend de produção, e gerar relatório WCAG-EM rastreável.
+- Publicar uma declaração de acessibilidade provisória com escopo, combinações
+  testadas, contato e limitações reais; nenhuma alegação de conformidade antes
+  do fechamento do R14.
+
+**Critério de saída:** zero bloqueio crítico/alto para leitor de tela; todas as
+funções essenciais executáveis e compreensíveis nas quatro famílias de
+tecnologia assistiva; matriz e evidências anexadas ao gate.
+
+#### [ ] R10 — Baixa visão, daltonismo e mobilidade reduzida
+
+- Validar reflow a 320 CSS px, equivalente ao cenário de 400% partindo de
+  1280 px, em todas as views, modais, skins e estados; nenhuma perda de conteúdo
+  ou rolagem horizontal da página.
+- Auditar contraste de **todos** os estados: texto AA 4,5:1, texto grande 3:1,
+  componentes/foco 3:1. Criar opção de alta legibilidade mirando 7:1 onde
+  aplicável, sem alegar conformidade AAA integral.
+- Suportar zoom de texto, espaçamento customizado, orientação, modo de alto
+  contraste/`forced-colors` e inversão sem esconder ou sobrepor controles.
+- Nunca depender só de cor; status, seleção, erro, progresso e saúde devem ter
+  texto, forma ou ícone equivalente.
+- Revisar foco não obscurecido, indicador de foco forte, alternativas a drag e
+  alvos de toque. Manter mínimo WCAG e preferir 48×48 px nas ações principais.
+- Validar o fluxo somente por teclado e com switch scanning, Windows Voice
+  Access/controle por voz e, quando disponível, rastreamento ocular.
+- Testar simulações de protanopia, deuteranopia, tritanopia e acromatopsia sem
+  substituir a inspeção humana.
+
+**Critério de saída:** matriz desktop/mobile em 100%, 200% e 400%, teclado e
+tecnologias motoras sem perda funcional; contraste/reflow protegidos por
+regressão automatizada e evidência visual.
+
+#### [ ] R11 — Neurodiversidade, dislexia e controle cognitivo
+
+- **Leitura Biônica opt-in no Fluxo:** destacar visualmente a parte inicial da
+  palavra sem fragmentar sua leitura por tecnologia assistiva e sem quebrar a
+  spanificação lazy de blocos ou o desempenho em livros grandes.
+- **OpenDyslexic local:** incluir arquivos e licença auditados, sem CDN, com
+  seletor por perfil e fallback seguro. Apresentar como preferência, não como
+  tratamento médico nem melhoria universal comprovada.
+- **Modo Zen:** ocultar contadores, tempo restante, progresso e ações
+  secundárias, mantendo saída, pausa e controles essenciais alcançáveis.
+- Oferecer largura de coluna, altura de linha, espaçamento de letras/palavras,
+  guia/régua de leitura, miras ORP e presets de baixa estimulação totalmente
+  reversíveis.
+- Controle absoluto de tempo: pausar/parar todo avanço, desligar auto-scroll,
+  evitar autoplay e preservar posição/configuração. Nenhuma preferência pode
+  ser alterada inesperadamente ao mudar modo ou documento.
+- Auditar flashes, mudanças rápidas, parallax, animações e fotossensibilidade;
+  `prefers-reduced-motion` continua obrigatório e haverá override explícito na
+  aplicação. Incluir opção de baixa luminância/fotofobia sem sacrificar
+  contraste ou informação por cor.
+- Testar combinações Bionic/OpenDyslexic/Zen/TTS/Foco/Fluxo nas duas skins,
+  inclusive 4x e documentos patológicos.
+
+**Critério de saída:** todos os recursos são opt-in, persistentes, reversíveis,
+compatíveis com leitores de tela e sem regressão de desempenho; avaliação com
+usuários ou roteiro cognitivo documentado, sem alegações médicas.
+
+#### [ ] R12 — Equivalência auditiva e feedback multimodal
+
+- Proibir alertas exclusivamente sonoros. Toda conclusão, erro, buffering,
+  pausa, timer ou aviso presente/futuro deve ter texto e estado visual
+  persistente o bastante para ser percebido.
+- Tratar o texto original como transcrição integral do TTS e validar o destaque
+  tipo karaokê em Foco e Fluxo, inclusive seek, troca de bloco, fallback sem
+  timestamps e velocidades altas.
+- Garantir que ativar TTS nunca seja obrigatório, nunca reproduza sozinho e que
+  voz, idioma, velocidade, pausa, retomada e erro sejam acessíveis por teclado e
+  leitor de tela.
+- Documentar um contrato multimodal reutilizável para futuras funções sonoras,
+  como Pomodoro, impedindo regressões após a release.
+
+**Critério de saída:** nenhuma informação ou ação depende de audição; TTS e
+seus estados possuem equivalentes visuais/textuais sincronizados e testados.
+
+#### [ ] R13 — Internacionalização, novo nome e inglês padrão
+
+> **Último gate de implementação antes da revisão final.** A escolha do nome
+> ocorrerá aqui, depois de pesquisa de marca, domínio/repositório e conflito
+> linguístico. Não renomear antecipadamente nem quebrar backups existentes.
+
+- Escolher um nome internacional em inglês, distinto e pesquisado, e definir a
+  estratégia de migração da marca “Leitura Ligeira”.
+- Externalizar **todas** as strings visíveis e acessíveis de HTML/JS/backend:
+  botões, ARIA, erros, estados, diagnóstico, manifest e metadados.
+- Tornar inglês (`en`) o idioma padrão da interface e do documento raiz;
+  português brasileiro (`pt-BR`) permanece completo e selecionável antes do
+  login, com preferência persistida por dispositivo/perfil.
+- Usar APIs de internacionalização para datas, números, duração e pluralização;
+  não concatenar frases traduzidas nem presumir ordem gramatical portuguesa.
+- Manter idioma da interface separado do idioma de cada documento/TTS; marcar
+  trechos com `lang` correto e sugerir vozes compatíveis sem impedir escolha.
+- Traduzir e revisar humanamente onboarding, atalhos, mensagens de segurança,
+  README, instalação, backup, troubleshooting, declaração de acessibilidade e
+  changelog. Nenhuma tradução automática sem revisão.
+- Atualizar nome, título, ícone, manifest, pacote, documentação e superfícies do
+  servidor preservando banco, sessões, caminhos de dados e formato de backup.
+- Criar testes de chaves ausentes, fallback, interpolação, troca de locale,
+  expansão de texto e ausência de strings portuguesas hardcoded em produção.
+
+**Critério de saída:** instalação nova abre em inglês; troca para pt-BR cobre
+100% das superfícies; ambos os idiomas atravessam todos os fluxos, skins e
+tecnologias assistivas; rebranding não perde dados nem invalida backups.
+
+#### [ ] R14 — Revisão final WCAG, release candidate e publicação
+
+- Congelamento absoluto depois do R13: somente correções de regressão,
+  acessibilidade, segurança, tradução ou perda de dados.
+- Executar avaliação humana WCAG-EM 2.2 AA de páginas completas e todas as
+  variações; ferramenta automática sozinha nunca encerra o gate.
+- Repetir matriz de leitores de tela, teclado/voz/switch, 400% reflow,
+  contraste/forced-colors, reduced motion, neurodiversidade, TTS e dois locales.
+- Gerar `1.0.0-rc1`, changelog, SBOM/artefatos, declaração de acessibilidade,
+  limitações conhecidas e procedimento de rollback.
+- Usar por alguns dias em pelo menos dois dispositivos físicos e dois sistemas
+  de tecnologia assistiva; durante o soak entram apenas correções permitidas.
+- Repetir todos os gates R1–R14, criar tag `v1.0.0` e publicar os artefatos.
+
+**Critério de saída da Release 1.0:** transporte opcional seguro, backup
+restaurado, ambiente reproduzível, migrações e dependências resilientes,
+hardening revisado, WCAG 2.2 AA sustentada por avaliação humana, recursos de
+neurodiversidade opt-in, equivalência multimodal, interface inglesa padrão com
+pt-BR completo, gate verde e RC validada em dispositivos reais.
 
 ### Backlog de produto pós-release
 
-As Fases 10–28 permanecem planejadas, mas estão congeladas até a conclusão de
-R1–R9. A numeração histórica foi preservada para não quebrar referências.
-A parte de HTTPS da Fase 11 foi promovida para R1; a PWA offline continua
-pós-release. O backup mínimo foi promovido para R2; a exportação portátil
-completa continua na Fase 14.
+As funcionalidades não relacionadas aos gates R9–R13 permanecem congeladas
+até a conclusão de R1–R14. A numeração histórica foi preservada para não quebrar
+referências; Fases 15, 21, 22, 23 e 25 apontam agora para o escopo promovido de
+neurodiversidade. A parte HTTPS da Fase 11 foi promovida para R1; PWA offline
+continua pós-release. O backup mínimo foi promovido para R2; a exportação
+portátil completa continua na Fase 14 histórica.
 
 #### [ ] Fase 10 — Teste de velocidade/compreensão embutido
 *Depende de: Fase 5 (grava resultado como dado de desempenho).*
@@ -1321,17 +1482,18 @@ estável.*
   somente com service worker, cache offline e "adicionar à tela inicial"
   completo. Revisar o `Cache-Control: no-store` de desenvolvimento.
 
-#### [ ] Fase 12 — Polish
-- Overlay de atalhos (Shift+?), refinamento de tema/contraste, web manifest
-  (ícone+nome), mDNS via Avahi (`reader.local`) com fallback de IP estático
-  documentado (mDNS no Android é inconsistente — testar nos aparelhos reais).
+#### [ ] Fase 12 — Polish pós-release
+- [x] Overlay de atalhos, contraste essencial e manifest/ícone básicos foram
+  antecipados e encerrados no R8.
+- [ ] Refinamento visual não bloqueante e mDNS via Avahi (`reader.local`) com
+  fallback de IP estático documentado; testar a inconsistência no Android.
 - [x] **Fundação visual antecipada em 2026-07-16:** identidade editorial de
   biblioteca em CSS puro (papel, madeira, verde e latão), componentes
   responsivos, temas claro/escuro, estados de foco consistentes e perfis
-  acessíveis por teclado. Permanecem pendentes overlay de atalhos, manifest e
-  descoberta mDNS. A skin alternativa Odysseus (grafite, coral e ciano) esta
-  concluida, selecionavel e persistida por perfil sem dependencias externas.
-  Os itens restantes mantem a Fase 12 aberta.
+  acessíveis por teclado. A skin alternativa Odysseus (grafite, coral e ciano)
+  está concluída, selecionável e persistida por perfil sem dependências
+  externas. Somente os refinamentos não bloqueantes e o mDNS mantêm a Fase 12
+  aberta.
 
 #### [ ] Fase 13 — Administração de contas (self-service) — **NÃO PLANEJADA, precisa deliberação**
 *Depende de: uso real acumulado das Fases 4-9 (padrões de conta, permissão e
@@ -1356,9 +1518,9 @@ rudimentar de contas, arrisca retrabalho).*
 - Exportação em um clique de um arquivo `.zip` com os documentos originais ePUB/PDF/TXT do perfil logado e um arquivo JSON estruturado com o progresso de leitura, sessões e configurações.
 - Importação correspondente para restauração rápida em qualquer outra instância do Leitura Ligeira.
 
-#### [ ] Fase 15 — Acessibilidade: Leitura Biônica e OpenDyslexic
-- Opção de visualização "Leitura Biônica" no modo Fluxo (iniciais das palavras em negrito).
-- Integração local da fonte open-source OpenDyslexic nas opções de estilo.
+#### [ ] Fase 15 — Acessibilidade: Leitura Biônica e OpenDyslexic *(promovida para R11)*
+- O escopo deixou de ser pós-release: Bionic Reading, OpenDyslexic, persistência, compatibilidade com leitor de tela e testes patológicos bloqueiam o R11.
+- Esta entrada histórica permanece apenas para preservar referências; a especificação normativa está no gate R11.
 
 #### [ ] Fase 16 — O Mural da Casa (Recomendações e Notas Compartilhadas)
 - Painel comum na biblioteca de recomendações locais entre membros da mesma casa.
@@ -1367,8 +1529,8 @@ rudimentar de contas, arrisca retrabalho).*
 #### [ ] Fase 17 — Estimativas Dinâmicas de Tempo Restante
 - Biblioteca calcula e exibe estimativa de tempo restante baseando-se no WPM médio real do usuário nas últimas sessões do mesmo livro.
 
-#### [ ] Fase 18 — Timeboxing / Pomodoro Integrado
-- Cronômetro no leitor para limitar sessões (15, 20, 25 min) com pausa automática e sinal sonoro nativo.
+#### [ ] Fase 18 — Timeboxing / Pomodoro Integrado *(pós-release, subordinada ao contrato R12)*
+- Cronômetro continua pós-release, mas qualquer sinal sonoro deverá cumprir o feedback visual/textual obrigatório definido no R12.
 
 #### [ ] Fase 19 — Dicionário Offline Local
 - Exibição de definições semânticas de palavras com dois cliques, puxando de banco de dados offline local sem requisições externas.
@@ -1378,20 +1540,20 @@ rudimentar de contas, arrisca retrabalho).*
 - O progresso de leitura é efêmero (salvo no cache/sessionStorage do navegador local).
 - **Restrição de Acesso:** Convidados têm privilégios estritos de somente leitura (read-only) — eles podem ver a biblioteca de documentos públicos da casa e ler, mas são impedidos de fazer upload de arquivos/URLs ou de excluir documentos.
 
-#### [ ] Fase 21 — Régua de Leitura Visual (Modo Fluxo)
-- Régua de foco visual que destaca o parágrafo/bloco ativo e desfoca ou escurece ligeiramente o texto fora da palavra ativa no Modo Fluxo.
+#### [ ] Fase 21 — Régua de Leitura Visual (Modo Fluxo) *(promovida para R11)*
+- A guia/régua opt-in, sem ocultar conteúdo para tecnologia assistiva, passou a integrar o gate R11.
 
-#### [ ] Fase 22 — Modo Sono Extremo (OLED Black + Filtro Vermelho)
-- Tema de contraste absoluto (fundo preto absoluto #000) e filtro vermelho de software via overlay CSS para leitura no escuro de cabeceira.
+#### [ ] Fase 22 — Baixa luminância e fotofobia *(núcleo promovido para R11)*
+- R11 exige opção de baixa luminância/fotofobia com contraste preservado; filtro vermelho específico só será mantido se não destruir informação ou legibilidade.
 
-#### [ ] Fase 23 — Modo Zen (Leitura Livre de Distrações)
-- Toggle de visualização que oculta toda a interface de controles, barras de progresso e botões, restando apenas o texto e o fundo da tela.
+#### [ ] Fase 23 — Modo Zen (Leitura Livre de Distrações) *(promovida para R11)*
+- O Modo Zen agora bloqueia a release no R11 e deve manter pausa, saída e controles essenciais acessíveis.
 
 #### [ ] Fase 24 — Prateleiras Dinâmicas por Tempo de Leitura
 - Agrupamento automático na biblioteca por duração estimada de leitura (ex: "Tempo de Café" < 10min, "Leitura Média" 10-30min, "Leitura Profunda" > 30min).
 
-#### [ ] Fase 25 — Miras Auxiliares ORP (Guias Oculares RSVP)
-- Adição opcional de marcas de mira visual finas alinhadas ao caractere vermelho (ORP) para estabilização do olhar em altas velocidades.
+#### [ ] Fase 25 — Miras Auxiliares ORP (Guias Oculares RSVP) *(promovida para R11)*
+- As miras opt-in passam ao R11, com contraste, reduced motion e compatibilidade de zoom obrigatórios.
 
 #### [ ] Fase 26 — Coleções Hierárquicas (Subpastas via Separador)
 - Suporte a subcoleções usando barras como separador de caminho (ex: `Estudos/História`). A biblioteca renderiza os filtros em árvore com recuo visual e pastas retráteis.

@@ -21,13 +21,13 @@ for (const shelf of ["all", "quero_ler", "lendo", "lido", "abandonado"]) {
 assert.match(html, /class="[^"]*\bshelf-tabs\b[^"]*"[^>]*role="tablist"/);
 assert.match(app, /const SHELF_PREDICATES = \{[\s\S]*abandonado:/);
 assert.match(app, /if \(doc\.progress_status === "abandonado"\) \{\s*openAbandonedModal\(doc\);/);
-assert.match(app, /li\.querySelector\("\.doc-info"\)\.addEventListener\("click", \(\) => openLibraryDocument\(doc\)\)/);
+assert.match(app, /docInfo\.addEventListener\("click", \(\) => openLibraryDocument\(doc\)\)/);
 for (const choice of ["abandoned-resume-btn", "abandoned-wishlist-btn", "abandoned-keep-btn"]) {
     assert.ok(htmlIds.includes(choice), `abandoned choice #${choice} must exist`);
 }
 
 assert.match(app, /const controller = new AbortController\(\)/);
-assert.match(app, /if \(requestId !== libraryRequestId \|\| !res\.ok\) return/);
+assert.match(app, /if \(requestId !== libraryRequestId \|\| res\.status === 401\) return/);
 assert.match(app, /libraryAbortController\.abort\(\)/);
 assert.match(app, /clearTimeout\(searchDebounceTimer\)/);
 

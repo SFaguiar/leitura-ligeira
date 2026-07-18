@@ -2,11 +2,18 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Leitura Ligeira</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Biblioteca local com leitura rápida em Foco, Fluxo e narração sincronizada." />
+<meta name="theme-color" content="#3d2b20" />
+<meta name="color-scheme" content="light dark" />
+<title>Leitura Ligeira — biblioteca e leitura rápida</title>
+<link rel="icon" href="/static/icons/leitura-ligeira.svg" type="image/svg+xml" />
+<link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
+<a id="skip-link" class="skip-link" href="#login-view">Ir para o conteúdo principal</a>
+<div id="app-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 <header class="topbar">
     <div class="brand-lockup">
         <span class="brand-mark" aria-hidden="true">LL</span>
@@ -16,7 +23,13 @@
         </div>
     </div>
     <div class="topbar-actions">
-        <label class="skin-picker" title="Escolher aparencia">
+        <button id="shortcuts-btn" class="icon-btn topbar-tool" type="button" title="Ver atalhos de teclado" aria-haspopup="dialog">
+            <span aria-hidden="true">?</span><span class="topbar-tool-label">Atalhos</span>
+        </button>
+        <button id="system-btn" class="icon-btn topbar-tool" type="button" title="Abrir diagnóstico do sistema" hidden>
+            <span aria-hidden="true">⚙</span><span class="topbar-tool-label">Sistema</span>
+        </button>
+        <label class="skin-picker" title="Escolher aparência">
             <span class="sr-only">Aparencia</span>
             <select id="skin-select" aria-label="Aparencia">
                 <option value="library">Biblioteca</option>
@@ -24,8 +37,8 @@
             </select>
         </label>
         <span id="current-user-name" class="current-user-name" hidden></span>
-        <button id="logout-btn" class="btn" title="Sair" hidden>Sair</button>
-        <button id="theme-toggle" class="icon-btn" title="Alternar tema">🌙</button>
+        <button id="logout-btn" class="btn" type="button" title="Sair" hidden>Sair</button>
+        <button id="theme-toggle" class="icon-btn" type="button" title="Alternar tema" aria-label="Ativar tema escuro" aria-pressed="false">🌙</button>
     </div>
 </header>
 
@@ -34,53 +47,57 @@
     <span><strong>Conexão HTTP local.</strong> Use o acesso pela rede somente em um Wi-Fi doméstico confiável.</span>
 </div>
 
-<main id="login-view" class="view">
+<main id="login-view" class="view" tabindex="-1" aria-labelledby="login-heading">
     <div class="welcome-copy">
         <p class="section-eyebrow">Bem-vindo &agrave; biblioteca</p>
-    <h2>Quem está lendo?</h2>
+    <h2 id="login-heading">Quem está lendo?</h2>
         <p>Escolha seu perfil e retome seu momento de leitura.</p>
     </div>
-    <ul id="profile-list" class="profile-list"></ul>
-    <button id="new-profile-btn" class="btn btn-primary">+ Novo perfil</button>
+    <ul id="profile-list" class="profile-list" aria-label="Perfis disponíveis"></ul>
+    <div id="profile-feedback" class="profile-feedback" role="status" aria-live="polite" hidden>
+        <p id="profile-feedback-text"></p>
+        <button id="profile-retry-btn" class="btn" type="button" hidden>Tentar novamente</button>
+    </div>
+    <button id="new-profile-btn" class="btn btn-primary" type="button">+ Novo perfil</button>
 </main>
 
-<div id="login-modal" class="modal" hidden>
+<div id="login-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="login-modal-name" hidden>
     <div class="modal-card">
         <h2 id="login-modal-name">Entrar</h2>
         <label for="login-password">Senha</label>
         <input id="login-password" type="password" maxlength="256" autocomplete="current-password" placeholder="Sua senha" />
-        <p id="login-error" class="error-text" hidden></p>
+        <p id="login-error" class="error-text" role="alert" hidden></p>
         <div class="modal-actions">
-            <button id="login-cancel-btn" class="btn">Cancelar</button>
-            <button id="login-submit-btn" class="btn btn-primary">Entrar</button>
+            <button type="button" id="login-cancel-btn" class="btn">Cancelar</button>
+            <button type="button" id="login-submit-btn" class="btn btn-primary">Entrar</button>
         </div>
     </div>
 </div>
 
-<div id="new-profile-modal" class="modal" hidden>
+<div id="new-profile-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="new-profile-heading" hidden>
     <div class="modal-card">
-        <h2>Novo perfil</h2>
+        <h2 id="new-profile-heading">Novo perfil</h2>
         <label for="new-profile-name">Nome</label>
         <input id="new-profile-name" type="text" maxlength="80" autocomplete="username" placeholder="Seu nome" />
         <label for="new-profile-password">Senha</label>
         <input id="new-profile-password" type="password" minlength="8" maxlength="256" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" />
-        <p id="new-profile-error" class="error-text" hidden></p>
+        <p id="new-profile-error" class="error-text" role="alert" hidden></p>
         <div class="modal-actions">
-            <button id="new-profile-cancel-btn" class="btn">Cancelar</button>
-            <button id="new-profile-submit-btn" class="btn btn-primary">Criar perfil</button>
+            <button type="button" id="new-profile-cancel-btn" class="btn">Cancelar</button>
+            <button type="button" id="new-profile-submit-btn" class="btn btn-primary">Criar perfil</button>
         </div>
     </div>
 </div>
 
-<main id="library-view" class="view" hidden>
+<main id="library-view" class="view" tabindex="-1" aria-labelledby="library-heading" hidden>
     <div class="view-heading">
-        <div><p class="section-eyebrow">Sua estante pessoal</p><h2>Biblioteca</h2></div>
+        <div><p class="section-eyebrow">Sua estante pessoal</p><h2 id="library-heading">Biblioteca</h2></div>
         <p>Encontre uma leitura, organize suas cole&ccedil;&otilde;es ou comece algo novo.</p>
     </div>
 
     <div class="library-actions">
-        <button id="new-doc-btn" class="btn btn-primary">+ Novo texto</button>
-        <button id="stats-btn" class="btn">Estat&iacute;sticas</button>
+        <button type="button" id="new-doc-btn" class="btn btn-primary">+ Novo texto</button>
+        <button type="button" id="stats-btn" class="btn">Estat&iacute;sticas</button>
     </div>
     <div class="library-toolbar" role="search" aria-label="Buscar e filtrar biblioteca">
         <input id="library-search" class="library-search" type="search" placeholder="Buscar por título ou conteúdo..." aria-label="Buscar por título ou conteúdo" autocomplete="off" />
@@ -95,16 +112,34 @@
         <button type="button" class="mode-btn" role="tab" aria-selected="false" tabindex="-1" data-shelf="lido">Lido</button>
         <button type="button" class="mode-btn" role="tab" aria-selected="false" tabindex="-1" data-shelf="abandonado">Abandonado</button>
     </div>
-    <ul id="document-list" class="document-list" aria-live="polite"></ul>
-    <p id="library-empty" class="empty-hint" hidden>Nenhum texto ainda. Cole um texto para começar.</p>
+    <div id="library-loading" class="inline-loading" role="status" aria-live="polite" hidden>
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <span>Atualizando a estante...</span>
+    </div>
+    <ul id="document-list" class="document-list" aria-live="polite" aria-busy="false"></ul>
+    <section id="library-empty" class="empty-state" aria-labelledby="library-state-title" hidden>
+        <span id="library-state-icon" class="empty-state-icon" aria-hidden="true">❦</span>
+        <p id="library-state-eyebrow" class="section-eyebrow">Primeiros passos</p>
+        <h3 id="library-state-title">Sua estante está pronta</h3>
+        <p id="library-state-message">Adicione um texto e escolha Foco, Fluxo ou Narrador para começar.</p>
+        <ol id="library-onboarding" class="onboarding-steps">
+            <li><strong>Adicione</strong><span>Cole um texto, envie PDF/EPUB/TXT ou importe uma URL.</span></li>
+            <li><strong>Escolha</strong><span>Use Foco para RSVP ou Fluxo para acompanhar o texto completo.</span></li>
+            <li><strong>Ajuste</strong><span>Calibre velocidade, fonte e narrador durante a leitura.</span></li>
+        </ol>
+        <div class="empty-state-actions">
+            <button id="library-state-primary" class="btn btn-primary" type="button">Adicionar primeiro texto</button>
+            <button id="library-state-secondary" class="btn" type="button" hidden>Limpar filtros</button>
+        </div>
+    </section>
 </main>
 
-<main id="dashboard-view" class="view dashboard-view" hidden>
+<main id="dashboard-view" class="view dashboard-view" tabindex="-1" aria-labelledby="dashboard-heading" hidden>
     <div class="dashboard-topbar">
         <button id="dashboard-back-btn" class="icon-btn" type="button" title="Voltar a biblioteca">&larr;</button>
         <div>
             <p class="dashboard-eyebrow">Seu hist&oacute;rico em perspectiva</p>
-            <h2>Estat&iacute;sticas de leitura</h2>
+            <h2 id="dashboard-heading">Estat&iacute;sticas de leitura</h2>
         </div>
     </div>
 
@@ -129,7 +164,10 @@
         </label>
     </section>
     <p id="stats-privacy-note" class="stats-privacy-note"></p>
-    <p id="stats-error" class="error-text stats-error" role="alert" hidden></p>
+    <div id="stats-error-panel" class="action-error" hidden>
+        <p id="stats-error" class="error-text stats-error" role="alert"></p>
+        <button id="stats-retry-btn" class="btn" type="button">Tentar novamente</button>
+    </div>
     <p id="stats-loading" class="stats-loading" role="status" hidden>Calculando seu ritmo...</p>
 
     <div id="stats-content">
@@ -163,58 +201,89 @@
         </div>
     </div>
 </main>
-<div id="abandoned-modal" class="modal" hidden>
+
+<main id="system-view" class="view system-view" tabindex="-1" aria-labelledby="system-heading" hidden>
+    <div class="system-topbar">
+        <button id="system-back-btn" class="icon-btn" type="button" title="Voltar" aria-label="Voltar à tela anterior">&larr;</button>
+        <div>
+            <p class="section-eyebrow">Operação local</p>
+            <h2 id="system-heading">Sistema e diagnóstico</h2>
+            <p>Confira o que está pronto e o que pode funcionar em modo degradado.</p>
+        </div>
+        <button id="system-refresh-btn" class="btn" type="button">Atualizar</button>
+    </div>
+    <section id="system-summary" class="system-summary" aria-live="polite" hidden>
+        <span id="system-overall-badge" class="health-badge"></span>
+        <div>
+            <strong id="system-summary-title"></strong>
+            <p id="system-summary-message"></p>
+        </div>
+        <span id="system-version" class="system-version"></span>
+    </section>
+    <div id="system-loading" class="system-loading" role="status" aria-live="polite" hidden>
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <span>Verificando serviços locais...</span>
+    </div>
+    <div id="system-error-panel" class="action-error" hidden>
+        <p id="system-error" class="error-text" role="alert"></p>
+        <button id="system-retry-btn" class="btn" type="button">Tentar novamente</button>
+    </div>
+    <div id="system-components" class="system-components" role="list"></div>
+    <p id="system-generated-at" class="system-generated-at"></p>
+</main>
+
+<div id="abandoned-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="abandoned-heading" hidden>
     <div class="modal-card">
-        <h2>Retomar este documento?</h2>
+        <h2 id="abandoned-heading">Retomar este documento?</h2>
         <p id="abandoned-modal-title" class="modal-subtitle"></p>
         <div class="modal-actions modal-actions-stack">
-            <button id="abandoned-resume-btn" class="btn btn-primary">Continuar lendo</button>
-            <button id="abandoned-wishlist-btn" class="btn">Quero ler</button>
-            <button id="abandoned-keep-btn" class="btn">Manter abandonado (só explorar)</button>
+            <button type="button" id="abandoned-resume-btn" class="btn btn-primary">Continuar lendo</button>
+            <button type="button" id="abandoned-wishlist-btn" class="btn">Quero ler</button>
+            <button type="button" id="abandoned-keep-btn" class="btn">Manter abandonado (só explorar)</button>
         </div>
     </div>
 </div>
 
-<div id="edit-doc-modal" class="modal" hidden>
+<div id="edit-doc-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-doc-heading" hidden>
     <div class="modal-card">
-        <h2>Editar documento</h2>
+        <h2 id="edit-doc-heading">Editar documento</h2>
         <label for="edit-doc-title">Título</label>
         <input id="edit-doc-title" type="text" placeholder="Título" />
         <label for="edit-doc-collection">Coleção (opcional)</label>
         <input id="edit-doc-collection" type="text" placeholder="Ex: Ficção, Trabalho..." list="edit-doc-collection-list" />
         <datalist id="edit-doc-collection-list"></datalist>
-        <p id="edit-doc-error" class="error-text" hidden></p>
+        <p id="edit-doc-error" class="error-text" role="alert" hidden></p>
         <div class="modal-actions">
-            <button id="edit-doc-cancel-btn" class="btn">Cancelar</button>
-            <button id="edit-doc-save-btn" class="btn btn-primary">Salvar</button>
+            <button type="button" id="edit-doc-cancel-btn" class="btn">Cancelar</button>
+            <button type="button" id="edit-doc-save-btn" class="btn btn-primary">Salvar</button>
         </div>
     </div>
 </div>
 
-<div id="new-doc-modal" class="modal" hidden>
+<div id="new-doc-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="new-doc-heading" hidden>
     <div class="modal-card">
-        <h2>Novo texto</h2>
-        <div class="mode-switch doc-tab-row">
-            <button id="doc-tab-paste-btn" class="mode-btn active" data-tab="paste">Colar texto</button>
-            <button id="doc-tab-file-btn" class="mode-btn" data-tab="file">Arquivo</button>
-            <button id="doc-tab-url-btn" class="mode-btn" data-tab="url">URL</button>
+        <h2 id="new-doc-heading">Novo texto</h2>
+        <div class="mode-switch doc-tab-row" role="tablist" aria-label="Origem do texto">
+            <button id="doc-tab-paste-btn" class="mode-btn active" type="button" role="tab" aria-selected="true" aria-controls="doc-tab-paste" data-tab="paste">Colar texto</button>
+            <button id="doc-tab-file-btn" class="mode-btn" type="button" role="tab" aria-selected="false" aria-controls="doc-tab-file" tabindex="-1" data-tab="file">Arquivo</button>
+            <button id="doc-tab-url-btn" class="mode-btn" type="button" role="tab" aria-selected="false" aria-controls="doc-tab-url" tabindex="-1" data-tab="url">URL</button>
         </div>
 
-        <div id="doc-tab-paste" class="doc-tab-panel">
+        <div id="doc-tab-paste" class="doc-tab-panel" role="tabpanel" aria-labelledby="doc-tab-paste-btn">
             <label for="doc-title">Título</label>
             <input id="doc-title" type="text" placeholder="Ex: Artigo sobre X" />
             <label for="doc-text">Texto</label>
             <textarea id="doc-text" rows="10" placeholder="Cole o texto aqui..."></textarea>
         </div>
 
-        <div id="doc-tab-file" class="doc-tab-panel" hidden>
+        <div id="doc-tab-file" class="doc-tab-panel" role="tabpanel" aria-labelledby="doc-tab-file-btn" hidden>
             <label for="doc-file-title">Título (opcional)</label>
             <input id="doc-file-title" type="text" placeholder="Usa o nome do arquivo se vazio" />
             <label for="doc-file-input">Arquivo — PDF, EPUB ou TXT (máx. 50MB)</label>
             <input id="doc-file-input" type="file" accept=".pdf,.epub,.txt" />
         </div>
 
-        <div id="doc-tab-url" class="doc-tab-panel" hidden>
+        <div id="doc-tab-url" class="doc-tab-panel" role="tabpanel" aria-labelledby="doc-tab-url-btn" hidden>
             <label for="doc-url-title">Título (opcional)</label>
             <input id="doc-url-title" type="text" placeholder="Usa o título da página se vazio" />
             <label for="doc-url-input">URL</label>
@@ -225,52 +294,52 @@
             <input id="doc-private" type="checkbox" />
             Documento privado (só eu vejo)
         </label>
-        <p id="doc-error" class="error-text" hidden></p>
+        <p id="doc-error" class="error-text" role="alert" hidden></p>
         <div class="modal-actions">
-            <button id="cancel-doc-btn" class="btn">Cancelar</button>
-            <button id="save-doc-btn" class="btn btn-primary">Salvar e ler</button>
+            <button type="button" id="cancel-doc-btn" class="btn">Cancelar</button>
+            <button type="button" id="save-doc-btn" class="btn btn-primary">Salvar e ler</button>
         </div>
     </div>
 </div>
 
-<main id="reader-view" class="view" hidden>
+<main id="reader-view" class="view" tabindex="-1" aria-label="Leitor" hidden>
     <div class="reader-topbar">
-        <button id="back-btn" class="icon-btn" title="Voltar à biblioteca">←</button>
+        <button id="back-btn" class="icon-btn" type="button" title="Voltar à biblioteca" aria-label="Voltar à biblioteca">←</button>
         <div class="toc-wrapper">
-            <button id="toc-btn" class="icon-btn" title="Capítulos" hidden>≡</button>
-            <div id="toc-dropdown" class="toc-dropdown" hidden>
+            <button id="toc-btn" class="icon-btn" type="button" title="Capítulos" aria-label="Abrir capítulos" aria-expanded="false" aria-controls="toc-dropdown" hidden>≡</button>
+            <div id="toc-dropdown" class="toc-dropdown" role="navigation" aria-label="Capítulos do documento" hidden>
                 <ul id="toc-list" class="toc-list"></ul>
             </div>
         </div>
-        <span id="reader-title" class="reader-title"></span>
-        <div class="mode-switch">
-            <button id="mode-focus-btn" class="mode-btn active" data-mode="focus">Foco</button>
-            <button id="mode-flow-btn" class="mode-btn" data-mode="flow">Fluxo</button>
+        <h2 id="reader-title" class="reader-title" tabindex="-1"></h2>
+        <div class="mode-switch" role="group" aria-label="Modo de leitura">
+            <button id="mode-focus-btn" class="mode-btn active" type="button" aria-pressed="true" data-mode="focus">Foco</button>
+            <button id="mode-flow-btn" class="mode-btn" type="button" aria-pressed="false" data-mode="flow">Fluxo</button>
         </div>
     </div>
 
-    <div id="rsvp-stage" class="rsvp-stage" title="Toque para play/pause">
+    <div id="rsvp-stage" class="rsvp-stage" role="button" tabindex="0" title="Toque para reproduzir ou pausar" aria-label="Área de leitura. Reproduzir ou pausar">
         <div id="rsvp-display" class="rsvp-display">Pronto</div>
     </div>
 
-    <div id="flow-region" class="flow-region" hidden>
+    <div id="flow-region" class="flow-region" aria-label="Texto em modo Fluxo" hidden>
         <div id="flow-content" class="flow-content"></div>
-        <button id="flow-back-to-position" class="flow-back-btn" hidden>↓ Voltar pra posição atual</button>
+        <button type="button" id="flow-back-to-position" class="flow-back-btn" hidden>↓ Voltar pra posição atual</button>
     </div>
 
-    <div id="scrubber" class="scrubber">
+    <div id="scrubber" class="scrubber" role="slider" tabindex="0" aria-label="Posição no documento" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="Início do documento">
         <div class="progress-bar">
             <div id="progress-fill" class="progress-fill"></div>
         </div>
         <div id="paragraph-marks" class="paragraph-marks"></div>
     </div>
-    <div id="reading-progress-info" class="reading-progress-info"></div>
+    <div id="reading-progress-info" class="reading-progress-info" role="status" aria-live="polite"></div>
 
     <div class="controls">
         <div class="transport">
-            <button id="rewind-btn" class="icon-btn" title="Voltar ao início da frase">⏮</button>
-            <button id="play-pause-btn" class="icon-btn play-btn" title="Play/Pause">▶</button>
-            <button id="forward-btn" class="icon-btn" title="Avançar para a próxima frase">⏭</button>
+            <button id="rewind-btn" class="icon-btn" type="button" title="Voltar ao início da frase" aria-label="Voltar ao início da frase">⏮</button>
+            <button id="play-pause-btn" class="icon-btn play-btn" type="button" title="Reproduzir ou pausar" aria-label="Reproduzir">▶</button>
+            <button id="forward-btn" class="icon-btn" type="button" title="Avançar para a próxima frase" aria-label="Avançar para a próxima frase">⏭</button>
         </div>
 
         <div class="tts-toolbar">
@@ -316,19 +385,45 @@
             </div>
             <div id="orp-row" class="slider-row toggle-row">
                 <label for="orp-toggle">Destaque ORP (letra-âncora)</label>
-                <button id="orp-toggle" class="icon-btn" title="Ativar/desativar ORP">Desligado</button>
+                <button type="button" id="orp-toggle" class="icon-btn" title="Ativar/desativar ORP">Desligado</button>
             </div>
             <div id="nav-snap-back-row" class="slider-row toggle-row" hidden>
                 <label for="nav-snap-back-toggle">Voltar ao Foco ao clicar numa palavra</label>
-                <button id="nav-snap-back-toggle" class="icon-btn" title="Ao clicar numa palavra no Fluxo, volta pro Foco">Desligado</button>
+                <button type="button" id="nav-snap-back-toggle" class="icon-btn" title="Ao clicar numa palavra no Fluxo, volta pro Foco">Desligado</button>
             </div>
             <div class="slider-row toggle-row">
                 <label for="nav-pause-switch-toggle">Pausar ao trocar de modo</label>
-                <button id="nav-pause-switch-toggle" class="icon-btn" title="Pausar a leitura automaticamente ao trocar entre Foco e Fluxo">Desligado</button>
+                <button type="button" id="nav-pause-switch-toggle" class="icon-btn" title="Pausar a leitura automaticamente ao trocar entre Foco e Fluxo">Desligado</button>
             </div>
         </div>
     </div>
 </main>
+
+<div id="shortcuts-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-heading" hidden>
+    <div class="modal-card shortcuts-card">
+        <div class="shortcuts-heading-row">
+            <div>
+                <p class="section-eyebrow">Ajuda rápida</p>
+                <h2 id="shortcuts-heading">Atalhos de teclado</h2>
+            </div>
+            <button id="shortcuts-close-btn" class="icon-btn" type="button" aria-label="Fechar atalhos">&times;</button>
+        </div>
+        <p class="modal-subtitle">Funcionam fora de campos de texto e controles interativos.</p>
+        <dl class="shortcut-list">
+            <div><dt><kbd>Shift</kbd> + <kbd>?</kbd></dt><dd>Abrir ou fechar esta ajuda</dd></div>
+            <div><dt><kbd>Espaço</kbd></dt><dd>Reproduzir ou pausar no leitor</dd></div>
+            <div><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Navegar entre frases</dd></div>
+            <div><dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Ajustar WPM ou velocidade do narrador</dd></div>
+            <div><dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>Ir ao início ou fim quando a barra de progresso está focada</dd></div>
+            <div><dt><kbd>Esc</kbd></dt><dd>Fechar diálogos e menus</dd></div>
+        </dl>
+    </div>
+</div>
+
+<div id="app-toast" class="app-toast" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <span id="app-toast-message"></span>
+    <button id="app-toast-close" class="icon-btn" type="button" aria-label="Fechar mensagem">&times;</button>
+</div>
 
 <script type="module" src="/static/js/app.js"></script>
 </body>

@@ -23,9 +23,35 @@ const statsDailyChart = document.getElementById("stats-daily-chart");
 const statsChartEmpty = document.getElementById("stats-chart-empty");
 const statsModes = document.getElementById("stats-modes");
 const statsDocuments = document.getElementById("stats-documents");
+const statsErrorPanel = document.getElementById("stats-error-panel");
+const statsRetryBtn = document.getElementById("stats-retry-btn");
+
+const systemView = document.getElementById("system-view");
+const systemBtn = document.getElementById("system-btn");
+const systemBackBtn = document.getElementById("system-back-btn");
+const systemRefreshBtn = document.getElementById("system-refresh-btn");
+const systemRetryBtn = document.getElementById("system-retry-btn");
+const systemSummary = document.getElementById("system-summary");
+const systemOverallBadge = document.getElementById("system-overall-badge");
+const systemSummaryTitle = document.getElementById("system-summary-title");
+const systemSummaryMessage = document.getElementById("system-summary-message");
+const systemVersion = document.getElementById("system-version");
+const systemLoading = document.getElementById("system-loading");
+const systemErrorPanel = document.getElementById("system-error-panel");
+const systemError = document.getElementById("system-error");
+const systemComponents = document.getElementById("system-components");
+const systemGeneratedAt = document.getElementById("system-generated-at");
 const readerView = document.getElementById("reader-view");
 const documentList = document.getElementById("document-list");
 const libraryEmpty = document.getElementById("library-empty");
+const libraryLoading = document.getElementById("library-loading");
+const libraryStateIcon = document.getElementById("library-state-icon");
+const libraryStateEyebrow = document.getElementById("library-state-eyebrow");
+const libraryStateTitle = document.getElementById("library-state-title");
+const libraryStateMessage = document.getElementById("library-state-message");
+const libraryOnboarding = document.getElementById("library-onboarding");
+const libraryStatePrimary = document.getElementById("library-state-primary");
+const libraryStateSecondary = document.getElementById("library-state-secondary");
 
 const newDocBtn = document.getElementById("new-doc-btn");
 const newDocModal = document.getElementById("new-doc-modal");
@@ -99,6 +125,15 @@ const navPauseSwitchToggle = document.getElementById("nav-pause-switch-toggle");
 const themeToggle = document.getElementById("theme-toggle");
 const skinSelect = document.getElementById("skin-select");
 const transportWarning = document.getElementById("transport-warning");
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+const skipLink = document.getElementById("skip-link");
+const appAnnouncer = document.getElementById("app-announcer");
+const shortcutsBtn = document.getElementById("shortcuts-btn");
+const shortcutsModal = document.getElementById("shortcuts-modal");
+const shortcutsCloseBtn = document.getElementById("shortcuts-close-btn");
+const appToast = document.getElementById("app-toast");
+const appToastMessage = document.getElementById("app-toast-message");
+const appToastClose = document.getElementById("app-toast-close");
 
 const currentUserName = document.getElementById("current-user-name");
 const logoutBtn = document.getElementById("logout-btn");
@@ -106,6 +141,9 @@ const logoutBtn = document.getElementById("logout-btn");
 const loginView = document.getElementById("login-view");
 const profileList = document.getElementById("profile-list");
 const newProfileBtn = document.getElementById("new-profile-btn");
+const profileFeedback = document.getElementById("profile-feedback");
+const profileFeedbackText = document.getElementById("profile-feedback-text");
+const profileRetryBtn = document.getElementById("profile-retry-btn");
 
 const loginModal = document.getElementById("login-modal");
 const loginModalName = document.getElementById("login-modal-name");
@@ -288,11 +326,18 @@ function modeKey(base) {
     return `${base}${activeMode === "focus" ? "Focus" : "Flow"}`;
 }
 
+function updateThemeMetadata() {
+    const odysseus = document.documentElement.dataset.skin === "odysseus";
+    const dark = document.documentElement.dataset.theme === "dark";
+    themeColorMeta.content = odysseus ? "#0d0f10" : dark ? "#17110d" : "#3d2b20";
+}
+
 function applySkin(skin) {
     const normalized = skin === "odysseus" ? "odysseus" : "library";
     document.documentElement.setAttribute("data-skin", normalized);
     skinSelect.value = normalized;
     setSetting("skin", normalized);
+    updateThemeMetadata();
 }
 
 applySkin(getSetting("skin"));
@@ -301,8 +346,12 @@ skinSelect.addEventListener("change", () => applySkin(skinSelect.value));
 // ---- Theme ----
 function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
-    themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+    const dark = theme === "dark";
+    themeToggle.textContent = dark ? "☀️" : "🌙";
+    themeToggle.setAttribute("aria-label", dark ? "Ativar tema claro" : "Ativar tema escuro");
+    themeToggle.setAttribute("aria-pressed", String(dark));
     setSetting("theme", theme);
+    updateThemeMetadata();
 }
 applyTheme(getSetting("theme"));
 themeToggle.addEventListener("click", () => {
@@ -384,6 +433,122 @@ async function apiErrorMessage(res, fallback) {
     }
 }
 
+// ---- Product feedback, focus and dialog accessibility (R8) ----
+let toastTimer = null;
+const modalReturnFocus = new WeakMap();
+
+function announce(message) {
+    appAnnouncer.textContent = "";
+    requestAnimationFrame(() => {
+        appAnnouncer.textContent = message;
+    });
+}
+
+function focusView(view, label) {
+    skipLink.href = `#${view.id}`;
+    requestAnimationFrame(() => {
+        view.focus({ preventScroll: true });
+        if (label) announce(label);
+    });
+}
+
+function setButtonBusy(button, busy, busyLabel = "Aguarde...") {
+    if (busy) {
+        button.dataset.idleLabel = button.textContent;
+        button.textContent = busyLabel;
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+    } else {
+        if (button.dataset.idleLabel) button.textContent = button.dataset.idleLabel;
+        delete button.dataset.idleLabel;
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+    }
+}
+
+function showToast(message, { error = false, timeout = 7000 } = {}) {
+    clearTimeout(toastTimer);
+    appToastMessage.textContent = message;
+    appToast.classList.toggle("error", error);
+    appToast.setAttribute("role", error ? "alert" : "status");
+    appToast.hidden = false;
+    if (timeout > 0) {
+        toastTimer = setTimeout(() => {
+            appToast.hidden = true;
+        }, timeout);
+    }
+}
+
+function openDialog(modal, initialFocus) {
+    modalReturnFocus.set(modal, document.activeElement);
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+    requestAnimationFrame(() => initialFocus?.focus());
+}
+
+function closeDialog(modal) {
+    if (modal.hidden) return;
+    modal.hidden = true;
+    if (!document.querySelector(".modal:not([hidden])")) {
+        document.body.classList.remove("modal-open");
+    }
+    const returnFocus = modalReturnFocus.get(modal);
+    modalReturnFocus.delete(modal);
+    if (returnFocus?.isConnected && !returnFocus.closest("[hidden]")) {
+        requestAnimationFrame(() => returnFocus.focus());
+    }
+}
+
+function focusableElements(modal) {
+    return [...modal.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )].filter((element) => !element.hidden && element.getClientRects().length > 0);
+}
+
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") return;
+    const modal = document.querySelector(".modal:not([hidden])");
+    if (!modal) return;
+    const focusable = focusableElements(modal);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+});
+
+appToastClose.addEventListener("click", () => {
+    clearTimeout(toastTimer);
+    appToast.hidden = true;
+});
+
+function openShortcuts() {
+    openDialog(shortcutsModal, shortcutsCloseBtn);
+}
+
+function closeShortcuts() {
+    closeDialog(shortcutsModal);
+}
+
+shortcutsBtn.addEventListener("click", openShortcuts);
+shortcutsCloseBtn.addEventListener("click", closeShortcuts);
+shortcutsModal.addEventListener("click", (event) => {
+    if (event.target === shortcutsModal) closeShortcuts();
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "?" || !event.shiftKey) return;
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName) || event.target.isContentEditable) return;
+    event.preventDefault();
+    if (shortcutsModal.hidden) openShortcuts();
+    else closeShortcuts();
+});
+
 function showLogin() {
     // A 401/logout can replace the reader view without passing through
     // showLibrary(); discard any queued Flow work and document DOM here too.
@@ -405,36 +570,63 @@ function showLogin() {
     libraryView.hidden = true;
     loginView.hidden = false;
     dashboardView.hidden = true;
+    systemView.hidden = true;
     currentUserName.hidden = true;
     logoutBtn.hidden = true;
+    systemBtn.hidden = true;
+    cancelSystemRequest();
+    focusView(loginView, "Escolha um perfil para entrar");
     loadProfileList();
 }
 
 async function loadProfileList() {
-    const res = await fetch("/users");
-    const users = res.ok ? await res.json() : [];
-    profileList.innerHTML = "";
-    users.forEach((u) => {
-        const li = document.createElement("li");
-        li.textContent = u.name;
-        li.addEventListener("click", () => openLoginModal(u.name));
-        li.dataset.initial = u.name.trim().charAt(0).toUpperCase() || "?";
-        li.setAttribute("role", "button");
-        li.tabIndex = 0;
-        li.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                openLoginModal(u.name);
-            }
+    profileList.replaceChildren();
+    profileFeedback.hidden = false;
+    profileFeedbackText.textContent = "Carregando perfis...";
+    profileRetryBtn.hidden = true;
+    try {
+        const res = await fetch("/users");
+        if (!res.ok) throw new Error("profiles-unavailable");
+        const users = await res.json();
+        profileFeedback.hidden = users.length > 0;
+        if (!users.length) {
+            profileFeedback.hidden = false;
+            profileFeedbackText.textContent = "Ainda não há perfis. Crie o primeiro para preparar sua biblioteca.";
+        }
+        users.forEach((u) => {
+            const li = document.createElement("li");
+            li.textContent = u.name;
+            li.addEventListener("click", () => openLoginModal(u.name));
+            li.dataset.initial = u.name.trim().charAt(0).toUpperCase() || "?";
+            li.setAttribute("role", "button");
+            li.setAttribute("aria-label", `Entrar como ${u.name}`);
+            li.tabIndex = 0;
+            li.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openLoginModal(u.name);
+                }
+            });
+            profileList.appendChild(li);
         });
-        profileList.appendChild(li);
-    });
+    } catch {
+        profileFeedback.hidden = false;
+        profileFeedbackText.textContent = "Não foi possível carregar os perfis. Confira se o servidor continua ativo.";
+        profileRetryBtn.hidden = false;
+        profileFeedback.setAttribute("role", "alert");
+    }
 }
+
+profileRetryBtn.addEventListener("click", () => {
+    profileFeedback.setAttribute("role", "status");
+    loadProfileList();
+});
 
 async function afterLogin() {
     currentUserName.textContent = currentUser.name;
     currentUserName.hidden = false;
     logoutBtn.hidden = false;
+    systemBtn.hidden = false;
     loginView.hidden = true;
     try {
         const res = await fetch("/me/settings");
@@ -466,11 +658,10 @@ function openLoginModal(name) {
     loginModalName.textContent = name;
     loginPasswordInput.value = "";
     loginError.hidden = true;
-    loginModal.hidden = false;
-    loginPasswordInput.focus();
+    openDialog(loginModal, loginPasswordInput);
 }
 function closeLoginModal() {
-    loginModal.hidden = true;
+    closeDialog(loginModal);
 }
 loginCancelBtn.addEventListener("click", closeLoginModal);
 loginModal.addEventListener("click", (e) => {
@@ -489,32 +680,39 @@ loginSubmitBtn.addEventListener("click", async () => {
         loginError.hidden = false;
         return;
     }
-    const res = await securityFetch("/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: loginTargetName, password }),
-    });
-    if (!res.ok) {
-        loginError.textContent = await apiErrorMessage(res, "Nome ou senha incorretos.");
+    loginError.hidden = true;
+    setButtonBusy(loginSubmitBtn, true, "Entrando...");
+    try {
+        const res = await securityFetch("/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: loginTargetName, password }),
+        });
+        if (!res.ok) {
+            loginError.textContent = await apiErrorMessage(res, "Nome ou senha incorretos.");
+            loginError.hidden = false;
+            return;
+        }
+        currentUser = await res.json();
+        clearCsrfToken();
+        await ensureCsrfToken();
+        closeLoginModal();
+        await afterLogin();
+    } catch {
+        loginError.textContent = "Não foi possível entrar. Confira se o servidor continua ativo e tente novamente.";
         loginError.hidden = false;
-        return;
+    } finally {
+        setButtonBusy(loginSubmitBtn, false);
     }
-    currentUser = await res.json();
-    clearCsrfToken();
-    await ensureCsrfToken();
-    closeLoginModal();
-    await afterLogin();
 });
-
 function openNewProfileModal() {
     newProfileNameInput.value = "";
     newProfilePasswordInput.value = "";
     newProfileError.hidden = true;
-    newProfileModal.hidden = false;
-    newProfileNameInput.focus();
+    openDialog(newProfileModal, newProfileNameInput);
 }
 function closeNewProfileModal() {
-    newProfileModal.hidden = true;
+    closeDialog(newProfileModal);
 }
 newProfileBtn.addEventListener("click", openNewProfileModal);
 newProfileCancelBtn.addEventListener("click", closeNewProfileModal);
@@ -546,36 +744,51 @@ newProfileSubmitBtn.addEventListener("click", async () => {
         newProfileError.hidden = false;
         return;
     }
-    const res = await securityFetch("/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, password }),
-    });
-    if (!res.ok) {
-        newProfileError.textContent = await apiErrorMessage(res, "Não foi possível criar o perfil.");
+    newProfileError.hidden = true;
+    setButtonBusy(newProfileSubmitBtn, true, "Criando...");
+    try {
+        const res = await securityFetch("/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, password }),
+        });
+        if (!res.ok) {
+            newProfileError.textContent = await apiErrorMessage(res, "Não foi possível criar o perfil.");
+            newProfileError.hidden = false;
+            return;
+        }
+        currentUser = await res.json();
+        clearCsrfToken();
+        await ensureCsrfToken();
+        closeNewProfileModal();
+        await afterLogin();
+    } catch {
+        newProfileError.textContent = "Não foi possível criar o perfil. Confira o servidor e tente novamente.";
         newProfileError.hidden = false;
-        return;
+    } finally {
+        setButtonBusy(newProfileSubmitBtn, false);
     }
-    currentUser = await res.json();
-    clearCsrfToken();
-    await ensureCsrfToken();
-    closeNewProfileModal();
-    await afterLogin();
 });
-
 logoutBtn.addEventListener("click", async () => {
-    if (currentDocId) {
-        await saveProgress();
-        await closeSession();
+    setButtonBusy(logoutBtn, true, "Saindo...");
+    try {
+        if (currentDocId) {
+            await saveProgress();
+            await closeSession();
+        }
+        stopTtsForLifecycle();
+        engine.pause();
+        const response = await securityFetch("/logout", { method: "POST" });
+        if (!response.ok) throw new Error("logout-failed");
+        clearCsrfToken();
+        currentUser = null;
+        showLogin();
+    } catch {
+        showToast("Não foi possível sair. Sua sessão permanece ativa; confira o servidor e tente novamente.", { error: true });
+    } finally {
+        setButtonBusy(logoutBtn, false);
     }
-    stopTtsForLifecycle();
-    engine.pause();
-    await securityFetch("/logout", { method: "POST" });
-    clearCsrfToken();
-    currentUser = null;
-    showLogin();
 });
-
 async function bootstrap() {
     try {
         const res = await fetch("/me");
@@ -646,10 +859,13 @@ function updateSnapBackVisibility() {
 }
 
 function applyModeUI(mode) {
-    modeFocusBtn.classList.toggle("active", mode === "focus");
-    modeFlowBtn.classList.toggle("active", mode === "flow");
-    rsvpStage.hidden = mode !== "focus";
-    flowRegion.hidden = mode !== "flow";
+    const focusActive = mode === "focus";
+    modeFocusBtn.classList.toggle("active", focusActive);
+    modeFlowBtn.classList.toggle("active", !focusActive);
+    modeFocusBtn.setAttribute("aria-pressed", String(focusActive));
+    modeFlowBtn.setAttribute("aria-pressed", String(!focusActive));
+    rsvpStage.hidden = !focusActive;
+    flowRegion.hidden = focusActive;
 }
 
 // ---- Wake Lock (keep the screen on while reading hands-free) ----
@@ -737,6 +953,7 @@ let orpEnabled = getSetting("orpEnabled");
 function applyOrpToggleUI() {
     orpToggle.textContent = orpEnabled ? "Ligado" : "Desligado";
     orpToggle.classList.toggle("active", orpEnabled);
+    orpToggle.setAttribute("aria-pressed", String(orpEnabled));
 }
 applyOrpToggleUI();
 
@@ -754,8 +971,10 @@ let navPauseOnSwitch = getSetting("navPauseOnSwitch");
 function applyNavToggleUI() {
     navSnapBackToggle.textContent = navSnapBackOnClick ? "Ligado" : "Desligado";
     navSnapBackToggle.classList.toggle("active", navSnapBackOnClick);
+    navSnapBackToggle.setAttribute("aria-pressed", String(navSnapBackOnClick));
     navPauseSwitchToggle.textContent = navPauseOnSwitch ? "Ligado" : "Desligado";
     navPauseSwitchToggle.classList.toggle("active", navPauseOnSwitch);
+    navPauseSwitchToggle.setAttribute("aria-pressed", String(navPauseOnSwitch));
 }
 applyNavToggleUI();
 
@@ -1116,6 +1335,9 @@ flowContent.addEventListener("click", (e) => {
 });
 
 function updateLiveCounter(pointer, total) {
+    scrubber.setAttribute("aria-valuemax", String(Math.max(0, total - 1)));
+    scrubber.setAttribute("aria-valuenow", String(Math.max(0, pointer)));
+    scrubber.setAttribute("aria-valuetext", total ? `${pointer} de ${total} palavras` : "Documento vazio");
     if (!total) {
         readingProgressInfo.textContent = "";
         return;
@@ -1407,6 +1629,7 @@ function refreshPlayButton() {
     playPauseBtn.classList.toggle("is-loading", loading);
     playPauseBtn.setAttribute("aria-busy", String(loading));
     playPauseBtn.setAttribute("aria-label", loading ? "Carregando narração" : playing ? "Pausar" : "Reproduzir");
+    rsvpStage.setAttribute("aria-label", playing ? "Área de leitura. Pausar" : "Área de leitura. Reproduzir");
     if (engine.playing || ttsDriver.isPlaying()) {
         acquireWakeLock();
     } else {
@@ -1483,6 +1706,12 @@ playPauseBtn.addEventListener("click", () => doTogglePlay(playPauseBtn));
 rewindBtn.addEventListener("click", () => doRewind(rewindBtn));
 forwardBtn.addEventListener("click", () => doForward(forwardBtn));
 rsvpStage.addEventListener("click", () => doTogglePlay());
+rsvpStage.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        doTogglePlay();
+    }
+});
 
 const initialTtsRate = Math.max(0.5, Math.min(4, Number(getSetting("ttsRate")) || 1));
 ttsRateSlider.value = initialTtsRate.toFixed(1);
@@ -1585,6 +1814,23 @@ scrubber.addEventListener("pointercancel", async () => {
     await scrubSeekPromise;
     saveProgress();
 });
+scrubber.addEventListener("keydown", async (event) => {
+    const total = engine.getTokens().length;
+    if (!total) return;
+    const smallStep = Math.max(1, Math.ceil(total / 100));
+    const largeStep = Math.max(smallStep, Math.ceil(total / 10));
+    let target = null;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") target = engine.pointer - smallStep;
+    if (event.key === "ArrowRight" || event.key === "ArrowUp") target = engine.pointer + smallStep;
+    if (event.key === "PageDown") target = engine.pointer - largeStep;
+    if (event.key === "PageUp") target = engine.pointer + largeStep;
+    if (event.key === "Home") target = 0;
+    if (event.key === "End") target = total - 1;
+    if (target === null) return;
+    event.preventDefault();
+    await navigateToToken(target);
+    saveProgress();
+});
 
 wpmSlider.addEventListener("input", () => {
     engine.setWpm(Number(wpmSlider.value));
@@ -1608,6 +1854,7 @@ fontSlider.addEventListener("input", () => {
 
 document.addEventListener("keydown", (e) => {
     if (readerView.hidden) return;
+    if (e.target.closest("input, select, textarea, button, a, [contenteditable], [role='button'], [role='slider']")) return;
     if (e.code === "Space") {
         e.preventDefault();
         doTogglePlay();
@@ -1646,14 +1893,32 @@ document.addEventListener("keydown", (e) => {
 // evita o custo de start/stop a cada toggle, o no-op é barato.
 let currentSessionId = null;
 let heartbeatTimer = null;
+let backgroundSyncFailureNotified = false;
+
+function acknowledgeBackgroundSync(response) {
+    if (response?.ok) backgroundSyncFailureNotified = false;
+    return response;
+}
+
+function reportBackgroundSyncFailure() {
+    if (backgroundSyncFailureNotified) return;
+    backgroundSyncFailureNotified = true;
+    showToast("Não foi possível sincronizar o progresso. A leitura continua; confira a conexão antes de sair.", { error: true });
+}
 
 async function saveProgress(extraFields = {}) {
     if (!currentDocId) return;
-    await apiFetch(`/documents/${currentDocId}/progress`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ position: engine.pointer, ...extraFields }),
-    });
+    try {
+        const response = await apiFetch(`/documents/${currentDocId}/progress`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ position: engine.pointer, ...extraFields }),
+        });
+        if (response.status !== 401 && !response.ok) reportBackgroundSyncFailure();
+        acknowledgeBackgroundSync(response);
+    } catch {
+        reportBackgroundSyncFailure();
+    }
 }
 
 function startHeartbeatIfNeeded() {
@@ -1665,27 +1930,42 @@ async function sendHeartbeat() {
     // In narrator mode the audio element is the clock and engine.playing is
     // intentionally false; either clock therefore keeps the session alive.
     if (!currentSessionId || (!engine.playing && !ttsDriver.isPlaying())) return;
-    await apiFetch(`/sessions/${currentSessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ end_pointer: engine.pointer, position: engine.pointer }),
-    });
+    try {
+        const response = await apiFetch(`/sessions/${currentSessionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ end_pointer: engine.pointer, position: engine.pointer }),
+        });
+        if (response.status !== 401 && !response.ok) reportBackgroundSyncFailure();
+        acknowledgeBackgroundSync(response);
+    } catch {
+        reportBackgroundSyncFailure();
+    }
 }
 
 async function openSessionIfNeeded() {
     if (currentSessionId !== null || !currentDocId) return;
-    const res = await apiFetch("/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ document_id: currentDocId, mode: activeMode, start_pointer: engine.pointer }),
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    // session_id vem null quando collect_stats está desligado — opt-out
-    // respeitado no momento de gravar, não só de listar.
-    if (data.session_id != null) {
-        currentSessionId = data.session_id;
-        startHeartbeatIfNeeded();
+    try {
+        const res = await apiFetch("/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ document_id: currentDocId, mode: activeMode, start_pointer: engine.pointer }),
+        });
+        if (res.status !== 401 && !res.ok) {
+            reportBackgroundSyncFailure();
+            return;
+        }
+        acknowledgeBackgroundSync(res);
+        if (!res.ok) return;
+        const data = await res.json();
+        // session_id vem null quando collect_stats está desligado — opt-out
+        // respeitado no momento de gravar, não só de listar.
+        if (data.session_id != null) {
+            currentSessionId = data.session_id;
+            startHeartbeatIfNeeded();
+        }
+    } catch {
+        reportBackgroundSyncFailure();
     }
 }
 
@@ -1696,16 +1976,22 @@ async function closeSession() {
     const sessionId = currentSessionId;
     currentSessionId = null;
     const wpm = ttsEnabled ? null : Number(wpmSlider.value) || 300;
-    await apiFetch(`/sessions/${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            end_pointer: engine.pointer,
-            position: engine.pointer,
-            ended_at: true,
-            avg_wpm: wpm,
-        }),
-    });
+    try {
+        const response = await apiFetch(`/sessions/${sessionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                end_pointer: engine.pointer,
+                position: engine.pointer,
+                ended_at: true,
+                avg_wpm: wpm,
+            }),
+        });
+        if (response.status !== 401 && !response.ok) reportBackgroundSyncFailure();
+        acknowledgeBackgroundSync(response);
+    } catch {
+        reportBackgroundSyncFailure();
+    }
 }
 
 function resetSessionState() {
@@ -1880,7 +2166,7 @@ async function fetchStats() {
     cancelStatsRequest();
     const requestId = statsRequestId;
     statsAbortController = new AbortController();
-    statsError.hidden = true;
+    statsErrorPanel.hidden = true;
     statsLoading.hidden = false;
     statsContent.setAttribute("aria-busy", "true");
     try {
@@ -1893,7 +2179,7 @@ async function fetchStats() {
     } catch (error) {
         if (error.name !== "AbortError" && requestId === statsRequestId) {
             statsError.textContent = error.message || "Nao foi possivel carregar as estatisticas.";
-            statsError.hidden = false;
+            statsErrorPanel.hidden = false;
         }
     } finally {
         if (requestId === statsRequestId) {
@@ -1905,6 +2191,7 @@ async function fetchStats() {
 }
 
 function showDashboard(push = true) {
+    cancelSystemRequest();
     readerRequestId += 1;
     cancelLibraryRequest();
     if (currentDocId) {
@@ -1918,14 +2205,17 @@ function showDashboard(push = true) {
     loginView.hidden = true;
     libraryView.hidden = true;
     readerView.hidden = true;
+    systemView.hidden = true;
     dashboardView.hidden = false;
     fetchStats();
+    focusView(dashboardView, "Estatísticas de leitura");
     if (push) history.pushState({ view: "stats" }, "", "#/stats");
 }
 
 statsBtn.addEventListener("click", () => showDashboard());
 dashboardBackBtn.addEventListener("click", () => history.back());
 statsPeriod.addEventListener("change", fetchStats);
+statsRetryBtn.addEventListener("click", fetchStats);
 statsScopeButtons.forEach((button) => {
     button.addEventListener("click", () => {
         statsScope = button.dataset.statsScope;
@@ -1940,22 +2230,183 @@ statsScopeButtons.forEach((button) => {
 statsCollect.addEventListener("change", async () => {
     const enabled = statsCollect.checked;
     statsCollect.disabled = true;
-    const res = await apiFetch("/me/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ collect_stats: enabled }),
-    });
-    if (res.ok) {
-        localStorage.setItem(SETTINGS_PREFIX + "collectStats", enabled ? "1" : "0");
-        await fetchStats();
-    } else {
+    try {
+        const res = await apiFetch("/me/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ collect_stats: enabled }),
+        });
+        if (res.ok) {
+            localStorage.setItem(SETTINGS_PREFIX + "collectStats", enabled ? "1" : "0");
+            await fetchStats();
+        } else {
+            statsCollect.checked = !enabled;
+            statsError.textContent = await apiErrorMessage(res, "Não foi possível alterar a coleta.");
+            statsErrorPanel.hidden = false;
+        }
+    } catch {
         statsCollect.checked = !enabled;
-        statsError.textContent = await apiErrorMessage(res, "Nao foi possivel alterar a coleta.");
-        statsError.hidden = false;
+        statsError.textContent = "Não foi possível alterar a coleta. Confira o servidor e tente novamente.";
+        statsErrorPanel.hidden = false;
+    } finally {
+        statsCollect.disabled = false;
     }
-    statsCollect.disabled = false;
 });
+// ---- System diagnostics (R8) ----
+let systemRequestId = 0;
+let systemAbortController = null;
 
+const SYSTEM_COMPONENT_LABELS = {
+    application: "Aplicação",
+    database: "Banco de dados",
+    kokoro: "Narrador Kokoro",
+    ollama: "Ollama",
+    transport: "Conexão",
+    internet: "Internet",
+};
+const SYSTEM_STATUS_LABELS = {
+    healthy: "Pronto",
+    degraded: "Atenção",
+    unavailable: "Indisponível",
+    not_required: "Não necessário",
+};
+
+function cancelSystemRequest() {
+    systemRequestId += 1;
+    if (systemAbortController) systemAbortController.abort();
+    systemAbortController = null;
+    systemLoading.hidden = true;
+    systemView.removeAttribute("aria-busy");
+    if (systemRefreshBtn.hasAttribute("aria-busy")) setButtonBusy(systemRefreshBtn, false);
+}
+
+function diagnosticDetailText(name, component) {
+    const details = component.details || {};
+    const parts = [];
+    if (name === "database" && Number.isInteger(details.schema_version)) {
+        parts.push(`schema ${details.schema_version}`);
+    }
+    if (name === "database" && typeof details.journal_mode === "string") {
+        parts.push(`journal ${details.journal_mode.toUpperCase()}`);
+    }
+    if (name === "transport") {
+        parts.push(details.https ? "HTTPS" : "HTTP local");
+        if (details.lan_enabled) parts.push("LAN ativa");
+    }
+    if (component.version) parts.push(`versão ${component.version}`);
+    if (Number.isInteger(component.latency_ms)) parts.push(`${component.latency_ms} ms`);
+    parts.push(component.required ? "essencial" : "opcional");
+    return parts.join(" · ");
+}
+
+function renderSystemDiagnostics(data) {
+    const healthy = data.status === "healthy";
+    const unhealthy = data.status === "unhealthy";
+    systemSummary.hidden = false;
+    systemOverallBadge.className = `health-badge ${data.status}`;
+    systemOverallBadge.textContent = unhealthy ? "Falha" : healthy ? "Tudo pronto" : "Modo degradado";
+    systemSummaryTitle.textContent = unhealthy
+        ? "Um componente essencial precisa de atenção"
+        : healthy
+            ? "Leitura Ligeira pronta para uso"
+            : "A leitura continua disponível";
+    systemSummaryMessage.textContent = unhealthy
+        ? "Revise os componentes abaixo antes de continuar."
+        : healthy
+            ? "Aplicação, dados e serviços locais responderam normalmente."
+            : "Serviços opcionais indisponíveis não bloqueiam biblioteca, Foco ou Fluxo.";
+    systemVersion.textContent = `Leitura Ligeira ${data.version}`;
+
+    systemComponents.replaceChildren();
+    Object.entries(data.components).forEach(([name, component]) => {
+        const card = document.createElement("article");
+        card.className = `system-component ${component.status}`;
+        card.setAttribute("role", "listitem");
+        const heading = document.createElement("div");
+        heading.className = "system-component-heading";
+        const title = document.createElement("h3");
+        title.textContent = SYSTEM_COMPONENT_LABELS[name] || name;
+        const badge = document.createElement("span");
+        badge.className = `health-badge ${component.status}`;
+        badge.textContent = SYSTEM_STATUS_LABELS[component.status] || component.status;
+        heading.append(title, badge);
+        const message = document.createElement("p");
+        message.textContent = component.message;
+        const details = document.createElement("small");
+        details.textContent = diagnosticDetailText(name, component);
+        card.append(heading, message, details);
+        systemComponents.appendChild(card);
+    });
+    const generated = new Date(data.generated_at);
+    systemGeneratedAt.textContent = Number.isNaN(generated.getTime())
+        ? ""
+        : `Verificado em ${generated.toLocaleString("pt-BR")}`;
+}
+
+async function fetchSystemDiagnostics() {
+    cancelSystemRequest();
+    const requestId = systemRequestId;
+    systemAbortController = new AbortController();
+    systemLoading.hidden = false;
+    systemErrorPanel.hidden = true;
+    systemSummary.hidden = true;
+    systemComponents.replaceChildren();
+    systemGeneratedAt.textContent = "";
+    systemView.setAttribute("aria-busy", "true");
+    setButtonBusy(systemRefreshBtn, true, "Verificando...");
+    try {
+        const response = await apiFetch("/system/diagnostics", {
+            signal: systemAbortController.signal,
+        });
+        if (requestId !== systemRequestId || response.status === 401) return;
+        if (!response.ok) {
+            throw new Error(await apiErrorMessage(response, "Não foi possível verificar os serviços locais."));
+        }
+        const data = await response.json();
+        if (requestId !== systemRequestId) return;
+        renderSystemDiagnostics(data);
+        announce("Diagnóstico do sistema atualizado");
+    } catch (error) {
+        if (error?.name !== "AbortError" && requestId === systemRequestId) {
+            systemError.textContent = `${error.message || "Não foi possível verificar os serviços locais."} Tente novamente.`;
+            systemErrorPanel.hidden = false;
+        }
+    } finally {
+        if (requestId === systemRequestId) {
+            systemAbortController = null;
+            systemLoading.hidden = true;
+            systemView.removeAttribute("aria-busy");
+            setButtonBusy(systemRefreshBtn, false);
+        }
+    }
+}
+
+function showSystem(push = true) {
+    cancelStatsRequest();
+    cancelLibraryRequest();
+    readerRequestId += 1;
+    if (currentDocId) {
+        saveProgress();
+        closeSession();
+    }
+    stopTtsForLifecycle();
+    engine.pause();
+    resetFlowState();
+    currentDocId = null;
+    loginView.hidden = true;
+    libraryView.hidden = true;
+    readerView.hidden = true;
+    dashboardView.hidden = true;
+    systemView.hidden = false;
+    fetchSystemDiagnostics();
+    focusView(systemView, "Sistema e diagnóstico");
+    if (push) history.pushState({ view: "system" }, "", "#/system");
+}
+
+systemBtn.addEventListener("click", () => showSystem());
+systemBackBtn.addEventListener("click", () => history.back());
+systemRefreshBtn.addEventListener("click", fetchSystemDiagnostics);
+systemRetryBtn.addEventListener("click", fetchSystemDiagnostics);
 // ---- Navigation ----
 // Real history entries (pushState) so the Android back gesture/button moves
 // reader → library instead of leaving the site, reloading inside the reader
@@ -1963,6 +2414,7 @@ statsCollect.addEventListener("change", async () => {
 // and mode, and Fluxo→Foco→biblioteca pops one level at a time.
 function showLibrary(push = true) {
     cancelStatsRequest();
+    cancelSystemRequest();
     readerRequestId += 1;
     if (currentDocId) {
         saveProgress();
@@ -1973,15 +2425,18 @@ function showLibrary(push = true) {
     resetFlowState();
     readerView.hidden = true;
     dashboardView.hidden = true;
+    systemView.hidden = true;
     loginView.hidden = true;
     libraryView.hidden = false;
     currentDocId = null;
     fetchLibrary();
+    focusView(libraryView, "Biblioteca");
     if (push) history.pushState({ view: "library" }, "", "#/");
 }
 
 async function showReader(id, push = true, mode = "focus") {
     cancelStatsRequest();
+    cancelSystemRequest();
     const requestId = ++readerRequestId;
     cancelLibraryRequest();
     // Trocar de documento direto (via popstate entre duas leituras, sem
@@ -1992,10 +2447,20 @@ async function showReader(id, push = true, mode = "focus") {
         closeSession();
     }
     stopTtsForLifecycle();
-    const res = await apiFetch(`/documents/${id}`);
+    let res;
+    try {
+        res = await apiFetch(`/documents/${id}`);
+    } catch {
+        if (requestId === readerRequestId) {
+            showToast("Não foi possível abrir o documento. Confira o servidor e tente novamente.", { error: true });
+        }
+        return;
+    }
     if (requestId !== readerRequestId) return;
     if (!res.ok) {
-        if (res.status !== 401) alert("Não foi possível carregar o documento.");
+        if (res.status !== 401) {
+            showToast(await apiErrorMessage(res, "Não foi possível abrir o documento. Tente novamente."), { error: true });
+        }
         return;
     }
     const doc = await res.json();
@@ -2012,6 +2477,7 @@ async function showReader(id, push = true, mode = "focus") {
     libraryView.hidden = true;
     readerView.hidden = false;
     dashboardView.hidden = true;
+    systemView.hidden = true;
     loginView.hidden = true;
     activeMode = mode;
     setSetting("activeMode", mode);
@@ -2033,12 +2499,21 @@ async function showReader(id, push = true, mode = "focus") {
     }
     configureTtsForDocument(id);
     refreshPlayButton();
+    focusView(readerView, `Leitor: ${doc.title}`);
     if (push) history.pushState({ view: "reader", id, mode }, "", `#/read/${id}/${mode}`);
 
     // Restaura a posição depois do load() (que sempre reseta o ponteiro pra
     // 0) — upsert lazy no servidor: cria a linha se não existir e promove
     // 'quero_ler' -> 'lendo' automaticamente, sem sobrescrever 'lido'/'abandonado'.
-    const progressRes = await apiFetch(`/documents/${id}/progress`);
+    let progressRes;
+    try {
+        progressRes = await apiFetch(`/documents/${id}/progress`);
+    } catch {
+        if (requestId === readerRequestId) {
+            showToast("O texto foi aberto, mas o progresso salvo não pôde ser recuperado.", { error: true });
+        }
+        return;
+    }
     if (requestId !== readerRequestId) return;
     if (progressRes.ok) {
         const progress = await progressRes.json();
@@ -2071,6 +2546,8 @@ window.addEventListener("popstate", (e) => {
         }
     } else if (state && state.view === "stats") {
         showDashboard(false);
+    } else if (state && state.view === "system") {
+        showSystem(false);
     } else {
         showLibrary(false);
     }
@@ -2080,6 +2557,11 @@ function initFromLocation() {
     if (location.hash === "#/stats") {
         history.replaceState({ view: "stats" }, "", "#/stats");
         showDashboard(false);
+        return;
+    }
+    if (location.hash === "#/system") {
+        history.replaceState({ view: "system" }, "", "#/system");
+        showSystem(false);
         return;
     }
     const match = location.hash.match(/^#\/read\/(\d+)(?:\/(focus|flow))?$/);
@@ -2136,7 +2618,7 @@ function buildDocListItem(doc) {
                 <option value="lido" ${doc.progress_status === "lido" ? "selected" : ""}>✅ Lido</option>
                 <option value="abandonado" ${doc.progress_status === "abandonado" ? "selected" : ""}>🚫 Abandonado</option>
             </select>
-            ${manageable ? '<button class="icon-btn rename-btn" title="Renomear">✏️</button><button class="icon-btn delete-btn" title="Excluir">🗑️</button>' : ""}
+            ${manageable ? '<button class="icon-btn rename-btn" type="button" title="Renomear">✏️</button><button class="icon-btn delete-btn" type="button" title="Excluir">🗑️</button>' : ""}
         </div>
     `;
     li.querySelector(".doc-title").textContent = doc.title;
@@ -2145,9 +2627,21 @@ function buildDocListItem(doc) {
         `${doc.format.toUpperCase()} · ${doc.word_count.toLocaleString()} palavras · ` +
         `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}${privacyTag}`;
 
-    li.querySelector(".doc-info").addEventListener("click", () => openLibraryDocument(doc));
+    const docInfo = li.querySelector(".doc-info");
+    docInfo.setAttribute("role", "button");
+    docInfo.setAttribute("aria-label", `Abrir ${doc.title}`);
+    docInfo.tabIndex = 0;
+    docInfo.addEventListener("click", () => openLibraryDocument(doc));
+    docInfo.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openLibraryDocument(doc);
+        }
+    });
 
-    li.querySelector(".status-select").addEventListener("change", async (e) => {
+    const statusSelect = li.querySelector(".status-select");
+    statusSelect.setAttribute("aria-label", `Status de leitura de ${doc.title}`);
+    statusSelect.addEventListener("change", async (e) => {
         e.stopPropagation();
         const newStatus = e.target.value;
         if (!newStatus) return;
@@ -2155,20 +2649,34 @@ function buildDocListItem(doc) {
         // Keep click behavior correct while the PUT/refetch is still in flight:
         // marking as abandoned must protect the item immediately, in any shelf.
         doc.progress_status = newStatus;
-        const res = await apiFetch(`/documents/${doc.id}/progress`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: newStatus }),
-        });
-        if (!res.ok) {
+        statusSelect.disabled = true;
+        try {
+            const res = await apiFetch(`/documents/${doc.id}/progress`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (!res.ok) {
+                doc.progress_status = previousStatus;
+                if (res.status !== 401) {
+                    showToast(await apiErrorMessage(res, "Não foi possível alterar a prateleira."), { error: true });
+                    fetchLibrary();
+                }
+                return;
+            }
+            fetchLibrary();
+        } catch {
             doc.progress_status = previousStatus;
-            if (res.status !== 401) fetchLibrary();
-            return;
+            showToast("Não foi possível alterar a prateleira. Confira o servidor e tente novamente.", { error: true });
+            renderLibrary();
+        } finally {
+            if (statusSelect.isConnected) statusSelect.disabled = false;
         }
-        fetchLibrary();
     });
 
     if (manageable) {
+        li.querySelector(".rename-btn").setAttribute("aria-label", `Renomear ${doc.title}`);
+        li.querySelector(".delete-btn").setAttribute("aria-label", `Excluir ${doc.title}`);
         li.querySelector(".rename-btn").addEventListener("click", (e) => {
             e.stopPropagation();
             openEditDocModal(doc);
@@ -2217,24 +2725,97 @@ function populateCollectionFilter() {
     editDocCollectionList.innerHTML = collections.map((c) => `<option value="${escapeHtml(c)}"></option>`).join("");
 }
 
+let libraryStateMode = null;
+
+function updateShelfTabs(activeShelf = currentShelf) {
+    shelfTabButtons.forEach((button) => {
+        const active = button.dataset.shelf === activeShelf;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+        button.tabIndex = active ? 0 : -1;
+    });
+}
+
+function showLibraryState(mode, message = "") {
+    libraryStateMode = mode;
+    libraryEmpty.hidden = false;
+    libraryEmpty.setAttribute("role", mode === "error" ? "alert" : "status");
+    libraryOnboarding.hidden = mode !== "empty";
+    libraryStateSecondary.hidden = mode === "empty" || mode === "error";
+    const states = {
+        empty: {
+            icon: "❦",
+            eyebrow: "Primeiros passos",
+            title: "Sua estante está pronta",
+            message: "Adicione um texto e escolha Foco, Fluxo ou Narrador para começar.",
+            action: "Adicionar primeiro texto",
+        },
+        filtered: {
+            icon: "⌕",
+            eyebrow: "Busca e filtros",
+            title: "Nada por aqui",
+            message: message || "Nenhum documento corresponde aos filtros atuais.",
+            action: "Limpar busca e filtros",
+        },
+        error: {
+            icon: "!",
+            eyebrow: "Não foi possível atualizar",
+            title: "A estante não respondeu",
+            message: message || "Confira se o servidor continua ativo e tente novamente.",
+            action: "Tentar novamente",
+        },
+    };
+    const state = states[mode];
+    libraryStateIcon.textContent = state.icon;
+    libraryStateEyebrow.textContent = state.eyebrow;
+    libraryStateTitle.textContent = state.title;
+    libraryStateMessage.textContent = state.message;
+    libraryStatePrimary.textContent = state.action;
+    libraryStateSecondary.textContent = "Adicionar outro texto";
+}
+
+function hideLibraryState() {
+    libraryStateMode = null;
+    libraryEmpty.hidden = true;
+}
+
+function clearLibraryFilters() {
+    clearTimeout(searchDebounceTimer);
+    librarySearchInput.value = "";
+    searchQuery = "";
+    currentCollection = "";
+    libraryCollectionFilter.value = "";
+    currentShelf = "all";
+    updateShelfTabs();
+    fetchLibrary();
+    librarySearchInput.focus();
+}
+
+libraryStatePrimary.addEventListener("click", () => {
+    if (libraryStateMode === "empty") openModal();
+    else if (libraryStateMode === "error") fetchLibrary();
+    else clearLibraryFilters();
+});
+libraryStateSecondary.addEventListener("click", openModal);
+
 function renderLibrary() {
-    documentList.innerHTML = "";
+    documentList.replaceChildren();
     const predicate = SHELF_PREDICATES[currentShelf] || SHELF_PREDICATES.all;
     const filtered = allFetchedDocs.filter(
-        (d) => predicate(d) && (!currentCollection || d.collection === currentCollection)
+        (document) => predicate(document) && (!currentCollection || document.collection === currentCollection)
     );
-    if (allFetchedDocs.length === 0) {
-        libraryEmpty.textContent = searchQuery
-            ? "Nenhum documento corresponde à busca."
-            : "Nenhum texto ainda. Cole um texto para começar.";
-        libraryEmpty.hidden = false;
+    documentList.hidden = filtered.length === 0;
+    if (allFetchedDocs.length === 0 && !searchQuery) {
+        showLibraryState("empty");
     } else if (filtered.length === 0) {
-        libraryEmpty.textContent = "Nenhum documento encontrado com esse filtro.";
-        libraryEmpty.hidden = false;
+        showLibraryState(
+            "filtered",
+            searchQuery ? `Nenhum documento corresponde a “${searchQuery}”.` : "Nenhum documento corresponde à prateleira ou coleção escolhida.",
+        );
     } else {
-        libraryEmpty.hidden = true;
+        hideLibraryState();
     }
-    filtered.forEach((doc) => documentList.appendChild(buildDocListItem(doc)));
+    filtered.forEach((document) => documentList.appendChild(buildDocListItem(document)));
 }
 
 function cancelLibraryRequest() {
@@ -2245,6 +2826,8 @@ function cancelLibraryRequest() {
         libraryAbortController.abort();
         libraryAbortController = null;
     }
+    libraryLoading.hidden = true;
+    documentList.setAttribute("aria-busy", "false");
     libraryView.removeAttribute("aria-busy");
 }
 
@@ -2257,13 +2840,9 @@ function resetLibraryState() {
     librarySearchInput.value = "";
     libraryCollectionFilter.value = "";
     documentList.replaceChildren();
-    libraryEmpty.hidden = true;
-    shelfTabButtons.forEach((btn) => {
-        const isActive = btn.dataset.shelf === "all";
-        btn.classList.toggle("active", isActive);
-        btn.setAttribute("aria-selected", isActive ? "true" : "false");
-        btn.tabIndex = isActive ? 0 : -1;
-    });
+    documentList.hidden = false;
+    hideLibraryState();
+    updateShelfTabs("all");
 }
 
 async function fetchLibrary() {
@@ -2273,9 +2852,14 @@ async function fetchLibrary() {
     libraryAbortController = controller;
     const url = searchQuery ? `/documents?q=${encodeURIComponent(searchQuery)}` : "/documents";
     libraryView.setAttribute("aria-busy", "true");
+    documentList.setAttribute("aria-busy", "true");
+    libraryLoading.hidden = false;
     try {
         const res = await apiFetch(url, { signal: controller.signal });
-        if (requestId !== libraryRequestId || !res.ok) return;
+        if (requestId !== libraryRequestId || res.status === 401) return;
+        if (!res.ok) {
+            throw new Error(await apiErrorMessage(res, "Confira se o servidor continua ativo e tente novamente."));
+        }
         const docs = await res.json();
         if (requestId !== libraryRequestId) return;
         allFetchedDocs = docs;
@@ -2283,16 +2867,18 @@ async function fetchLibrary() {
         renderLibrary();
     } catch (error) {
         if (error?.name === "AbortError" || requestId !== libraryRequestId) return;
-        libraryEmpty.textContent = "Não foi possível atualizar a biblioteca.";
-        libraryEmpty.hidden = false;
+        documentList.replaceChildren();
+        documentList.hidden = true;
+        showLibraryState("error", error.message);
     } finally {
         if (requestId === libraryRequestId) {
             libraryAbortController = null;
+            libraryLoading.hidden = true;
+            documentList.setAttribute("aria-busy", "false");
             libraryView.removeAttribute("aria-busy");
         }
     }
 }
-
 librarySearchInput.addEventListener("input", () => {
     clearTimeout(searchDebounceTimer);
     // Invalidate the current query immediately, not only after the 300ms
@@ -2345,33 +2931,46 @@ let abandonedModalDoc = null;
 function openAbandonedModal(doc) {
     abandonedModalDoc = doc;
     abandonedModalTitle.textContent = doc.title;
-    abandonedModal.hidden = false;
+    openDialog(abandonedModal, abandonedResumeBtn);
 }
 function closeAbandonedModal() {
-    abandonedModal.hidden = true;
+    closeDialog(abandonedModal);
     abandonedModalDoc = null;
 }
 abandonedModal.addEventListener("click", (e) => {
     if (e.target === abandonedModal) closeAbandonedModal();
 });
 
-async function resolveAbandonedAndOpen(newStatus) {
+async function resolveAbandonedAndOpen(newStatus, button) {
     const doc = abandonedModalDoc;
-    closeAbandonedModal();
     if (!doc) return;
-    if (newStatus) {
-        await apiFetch(`/documents/${doc.id}/progress`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: newStatus }),
-        });
+    setButtonBusy(button, true, "Aguarde...");
+    try {
+        if (newStatus) {
+            const response = await apiFetch(`/documents/${doc.id}/progress`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (!response.ok) {
+                if (response.status !== 401) {
+                    showToast(await apiErrorMessage(response, "Não foi possível atualizar a prateleira."), { error: true });
+                }
+                return;
+            }
+        }
+        closeAbandonedModal();
+        showReader(doc.id);
+    } catch {
+        showToast("Não foi possível atualizar a prateleira. Confira o servidor e tente novamente.", { error: true });
+    } finally {
+        setButtonBusy(button, false);
     }
-    showReader(doc.id);
 }
 
-abandonedResumeBtn.addEventListener("click", () => resolveAbandonedAndOpen("lendo"));
-abandonedWishlistBtn.addEventListener("click", () => resolveAbandonedAndOpen("quero_ler"));
-abandonedKeepBtn.addEventListener("click", () => resolveAbandonedAndOpen(null));
+abandonedResumeBtn.addEventListener("click", () => resolveAbandonedAndOpen("lendo", abandonedResumeBtn));
+abandonedWishlistBtn.addEventListener("click", () => resolveAbandonedAndOpen("quero_ler", abandonedWishlistBtn));
+abandonedKeepBtn.addEventListener("click", () => resolveAbandonedAndOpen(null, abandonedKeepBtn));
 
 // ---- Editar documento (título + coleção) — Fase 7, substitui window.prompt ----
 let editDocTarget = null;
@@ -2381,11 +2980,10 @@ function openEditDocModal(doc) {
     editDocTitleInput.value = doc.title;
     editDocCollectionInput.value = doc.collection || "";
     editDocError.hidden = true;
-    editDocModal.hidden = false;
-    editDocTitleInput.focus();
+    openDialog(editDocModal, editDocTitleInput);
 }
 function closeEditDocModal() {
-    editDocModal.hidden = true;
+    closeDialog(editDocModal);
     editDocTarget = null;
 }
 editDocCancelBtn.addEventListener("click", closeEditDocModal);
@@ -2402,31 +3000,47 @@ editDocSaveBtn.addEventListener("click", async () => {
         editDocError.hidden = false;
         return;
     }
-    const res = await apiFetch(`/documents/${doc.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, collection: editDocCollectionInput.value.trim() }),
-    });
-    if (!res.ok) {
-        if (res.status === 401) return;
-        editDocError.textContent = await apiErrorMessage(res, "Falha ao salvar o documento.");
+    editDocError.hidden = true;
+    setButtonBusy(editDocSaveBtn, true, "Salvando...");
+    try {
+        const res = await apiFetch(`/documents/${doc.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, collection: editDocCollectionInput.value.trim() }),
+        });
+        if (!res.ok) {
+            if (res.status === 401) return;
+            editDocError.textContent = await apiErrorMessage(res, "Falha ao salvar o documento.");
+            editDocError.hidden = false;
+            return;
+        }
+        closeEditDocModal();
+        fetchLibrary();
+        showToast("Documento atualizado.");
+    } catch {
+        editDocError.textContent = "Não foi possível salvar. Confira o servidor e tente novamente.";
         editDocError.hidden = false;
-        return;
+    } finally {
+        setButtonBusy(editDocSaveBtn, false);
     }
-    closeEditDocModal();
-    fetchLibrary();
 });
-
 async function deleteDocument(doc) {
     if (!window.confirm(`Excluir "${doc.title}"? Essa ação não pode ser desfeita.`)) {
         return;
     }
-    const res = await apiFetch(`/documents/${doc.id}`, { method: "DELETE" });
-    if (!res.ok) {
-        if (res.status !== 401) alert(await apiErrorMessage(res, "Falha ao excluir o documento."));
-        return;
+    try {
+        const res = await apiFetch(`/documents/${doc.id}`, { method: "DELETE" });
+        if (!res.ok) {
+            if (res.status !== 401) {
+                showToast(await apiErrorMessage(res, "Falha ao excluir o documento."), { error: true });
+            }
+            return;
+        }
+        fetchLibrary();
+        showToast("Documento excluído.");
+    } catch {
+        showToast("Não foi possível excluir. Confira o servidor e tente novamente.", { error: true });
     }
-    fetchLibrary();
 }
 
 // ---- New document modal (Fase 6: três abas — colar/arquivo/URL) ----
@@ -2436,7 +3050,12 @@ const DOC_TAB_BUTTONS = [docTabPasteBtn, docTabFileBtn, docTabUrlBtn];
 
 function switchDocTab(tab) {
     activeDocTab = tab;
-    DOC_TAB_BUTTONS.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
+    DOC_TAB_BUTTONS.forEach((button) => {
+        const active = button.dataset.tab === tab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+        button.tabIndex = active ? 0 : -1;
+    });
     Object.entries(DOC_TAB_PANELS).forEach(([key, panel]) => {
         panel.hidden = key !== tab;
     });
@@ -2444,6 +3063,19 @@ function switchDocTab(tab) {
 docTabPasteBtn.addEventListener("click", () => switchDocTab("paste"));
 docTabFileBtn.addEventListener("click", () => switchDocTab("file"));
 docTabUrlBtn.addEventListener("click", () => switchDocTab("url"));
+DOC_TAB_BUTTONS.forEach((button, index) => {
+    button.addEventListener("keydown", (event) => {
+        let targetIndex = null;
+        if (event.key === "ArrowRight") targetIndex = (index + 1) % DOC_TAB_BUTTONS.length;
+        if (event.key === "ArrowLeft") targetIndex = (index - 1 + DOC_TAB_BUTTONS.length) % DOC_TAB_BUTTONS.length;
+        if (event.key === "Home") targetIndex = 0;
+        if (event.key === "End") targetIndex = DOC_TAB_BUTTONS.length - 1;
+        if (targetIndex === null) return;
+        event.preventDefault();
+        DOC_TAB_BUTTONS[targetIndex].focus();
+        DOC_TAB_BUTTONS[targetIndex].click();
+    });
+});
 
 function showDocError(message) {
     docError.textContent = message;
@@ -2460,11 +3092,10 @@ function openModal() {
     docPrivateInput.checked = false;
     docError.hidden = true;
     switchDocTab("paste");
-    newDocModal.hidden = false;
-    docTitleInput.focus();
+    openDialog(newDocModal, docTitleInput);
 }
 function closeModal() {
-    newDocModal.hidden = true;
+    closeDialog(newDocModal);
 }
 
 newDocBtn.addEventListener("click", openModal);
@@ -2480,17 +3111,19 @@ docTitleInput.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    if (!shortcutsModal.hidden) closeShortcuts();
     if (!newDocModal.hidden) closeModal();
     if (!loginModal.hidden) closeLoginModal();
     if (!newProfileModal.hidden) closeNewProfileModal();
     if (!abandonedModal.hidden) closeAbandonedModal();
     if (!editDocModal.hidden) closeEditDocModal();
+    if (!tocDropdown.hidden) closeTocDropdown({ restoreFocus: true });
 });
 
 saveDocBtn.addEventListener("click", async () => {
     docError.hidden = true;
     const visibility = docPrivateInput.checked ? "private" : "house";
-    let res;
+    let makeRequest;
 
     if (activeDocTab === "paste") {
         const text = docTextInput.value.trim();
@@ -2499,7 +3132,7 @@ saveDocBtn.addEventListener("click", async () => {
             return;
         }
         const title = docTitleInput.value.trim() || text.slice(0, 40);
-        res = await apiFetch("/documents", {
+        makeRequest = () => apiFetch("/documents", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title, raw_text: text, visibility }),
@@ -2516,45 +3149,58 @@ saveDocBtn.addEventListener("click", async () => {
         formData.append("visibility", visibility);
         // Sem Content-Type explícito — o navegador define o boundary do
         // multipart sozinho; setar manualmente quebraria o parsing no servidor.
-        res = await apiFetch("/documents/upload", { method: "POST", body: formData });
+        makeRequest = () => apiFetch("/documents/upload", { method: "POST", body: formData });
     } else {
         const url = docUrlInput.value.trim();
         if (!url) {
             showDocError("Cole uma URL.");
             return;
         }
-        res = await apiFetch("/documents/url", {
+        makeRequest = () => apiFetch("/documents/url", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url, title: docUrlTitleInput.value.trim(), visibility }),
         });
     }
 
-    if (!res.ok) {
-        if (res.status !== 401) showDocError(await apiErrorMessage(res, "Falha ao salvar o documento."));
-        return;
+    setButtonBusy(saveDocBtn, true, activeDocTab === "file" ? "Importando..." : "Salvando...");
+    try {
+        const res = await makeRequest();
+        if (!res.ok) {
+            if (res.status !== 401) {
+                showDocError(await apiErrorMessage(res, "Falha ao salvar o documento."));
+            }
+            return;
+        }
+        const doc = await res.json();
+        closeModal();
+        showReader(doc.id);
+    } catch {
+        showDocError("Não foi possível salvar. Confira o servidor, o arquivo ou a URL e tente novamente.");
+    } finally {
+        setButtonBusy(saveDocBtn, false);
     }
-    const doc = await res.json();
-    closeModal();
-    showReader(doc.id);
 });
-
 // ---- TOC (Fase 6) — botão "≡ Capítulos" na topbar do leitor ----
 let currentToc = null;
 
 function renderToc(toc) {
     currentToc = toc;
     tocBtn.hidden = !toc || toc.length === 0;
-    tocList.innerHTML = "";
+    tocList.replaceChildren();
     if (!toc) return;
     toc.forEach((entry) => {
         const li = document.createElement("li");
-        li.textContent = entry.title;
-        li.addEventListener("click", async () => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "toc-entry-btn";
+        button.textContent = entry.title;
+        button.addEventListener("click", async () => {
             closeTocDropdown();
             await navigateToToken(entry.token_index);
             saveProgress();
         });
+        li.appendChild(button);
         tocList.appendChild(li);
     });
 }
@@ -2562,9 +3208,14 @@ function renderToc(toc) {
 function openTocDropdown() {
     if (!currentToc) return;
     tocDropdown.hidden = false;
+    tocBtn.setAttribute("aria-expanded", "true");
+    requestAnimationFrame(() => tocList.querySelector("button")?.focus());
 }
-function closeTocDropdown() {
+function closeTocDropdown({ restoreFocus = false } = {}) {
+    if (tocDropdown.hidden) return;
     tocDropdown.hidden = true;
+    tocBtn.setAttribute("aria-expanded", "false");
+    if (restoreFocus) tocBtn.focus();
 }
 tocBtn.addEventListener("click", () => {
     if (tocDropdown.hidden) openTocDropdown();
