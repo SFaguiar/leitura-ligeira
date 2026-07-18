@@ -398,6 +398,9 @@ function showLogin() {
     currentDocId = null;
     ttsVoicesLoaded = false;
     ttsVoicesRequestId += 1;
+    ttsAvailable = null;
+    ttsAvailabilityChecking = false;
+    ttsUnavailableReason = "";
     readerView.hidden = true;
     libraryView.hidden = true;
     loginView.hidden = false;
@@ -597,6 +600,9 @@ const ttsDriver = new TTSDriver();
 let ttsEnabled = false;
 let ttsVoicesLoaded = false;
 let ttsVoicesRequestId = 0;
+let ttsAvailable = null;
+let ttsAvailabilityChecking = false;
+let ttsUnavailableReason = "";
 let ttsWasPlaying = false;
 let ttsStatusTimer = null;
 let latestTtsWpm = null;
@@ -1207,15 +1213,18 @@ function buildVoiceGroups(voices) {
         });
 }
 
-async function loadTtsVoices() {
-    if (ttsVoicesLoaded) return;
+async function loadTtsVoices({ force = false } = {}) {
+    if (ttsVoicesLoaded && !force) return ttsAvailable === true;
     const requestId = ++ttsVoicesRequestId;
+    ttsAvailabilityChecking = true;
+    applyTtsUi();
     try {
-        const res = await apiFetch("/tts/voices");
-        if (requestId !== ttsVoicesRequestId || !currentUser) return;
-        if (!res.ok) return;
+        const suffix = force ? "?refresh=true" : "";
+        const res = await apiFetch(`/tts/voices${suffix}`);
+        if (requestId !== ttsVoicesRequestId || !currentUser) return false;
+        if (!res.ok) throw new Error("voice-discovery-http");
         const data = await res.json();
-        if (requestId !== ttsVoicesRequestId || !currentUser) return;
+        if (requestId !== ttsVoicesRequestId || !currentUser) return false;
         const voices = Array.isArray(data.voices) ? data.voices : [];
         const serverDefault = data.default || "pf_dora";
         const stored = getSetting("ttsVoice") || serverDefault;
@@ -1228,22 +1237,55 @@ async function loadTtsVoices() {
         ttsVoice.replaceChildren(...buildVoiceGroups(options));
         ttsVoice.value = selected || serverDefault;
         setSetting("ttsVoice", ttsVoice.value);
+        ttsAvailable = data.available !== false && voices.length > 0;
+        ttsUnavailableReason = ttsAvailable
+            ? ""
+            : data.reason || "Servidor de narração local indisponível.";
+        ttsVoicesLoaded = true;
         if (currentDocId) {
             const resume = ttsDriver.isPlaying();
             ttsDriver.setVoice(ttsVoice.value);
             if (ttsEnabled && resume) await ttsDriver.play();
         }
-        ttsVoicesLoaded = true;
+        if (!ttsAvailable) {
+            showTtsStatus(
+                `${ttsUnavailableReason} A leitura sem narrador continua disponível.`,
+                { error: true },
+            );
+        } else if (!ttsEnabled) {
+            showTtsStatus("");
+        }
+        return ttsAvailable;
     } catch {
-        // The default voice remains usable; generation will surface a precise
-        // error if Kokoro itself is unavailable when the user presses play.
+        if (requestId !== ttsVoicesRequestId || !currentUser) return false;
+        ttsAvailable = false;
+        ttsVoicesLoaded = true;
+        ttsUnavailableReason = "Não foi possível consultar o narrador local.";
+        showTtsStatus(
+            `${ttsUnavailableReason} A leitura sem narrador continua disponível.`,
+            { error: true },
+        );
+        return false;
+    } finally {
+        if (requestId === ttsVoicesRequestId) {
+            ttsAvailabilityChecking = false;
+            applyTtsUi();
+        }
     }
 }
 
 function applyTtsUi() {
+    const unavailable = ttsAvailable === false && !ttsEnabled;
     ttsToggle.classList.toggle("active", ttsEnabled);
+    ttsToggle.classList.toggle("unavailable", unavailable);
     ttsToggle.setAttribute("aria-pressed", String(ttsEnabled));
-    ttsToggleLabel.textContent = ttsEnabled ? "Narrador ativo" : "Ativar Narrador";
+    ttsToggle.setAttribute("aria-busy", String(ttsAvailabilityChecking));
+    ttsToggle.disabled = ttsAvailabilityChecking;
+    ttsToggleLabel.textContent = ttsEnabled
+        ? "Narrador ativo"
+        : ttsAvailabilityChecking
+            ? "Verificando Narrador…"
+            : unavailable ? "Tentar Narrador" : "Ativar Narrador";
     ttsSettings.hidden = !ttsEnabled;
     wpmRow.hidden = ttsEnabled;
     chunkRow.hidden = ttsEnabled;
@@ -1313,9 +1355,15 @@ function configureTtsForDocument(documentId) {
     ttsDriver.setBufferSeconds(Number(ttsBufferSlider.value));
 }
 
-function setTtsEnabled(enabled) {
-    if (enabled === ttsEnabled) return;
+async function setTtsEnabled(enabled) {
+    if (enabled === ttsEnabled) return true;
     if (enabled) {
+        const ready = ttsAvailable === true || await loadTtsVoices({ force: true });
+        if (!ready) {
+            applyTtsUi();
+            refreshPlayButton();
+            return false;
+        }
         engine.pause();
         ttsEnabled = true;
         engine.setChunkSize(1);
@@ -1335,6 +1383,7 @@ function setTtsEnabled(enabled) {
     }
     applyTtsUi();
     refreshPlayButton();
+    return true;
 }
 
 function stopTtsForLifecycle() {
@@ -1446,8 +1495,8 @@ ttsBufferSlider.value = String(initialTtsBuffer);
 ttsBufferValue.textContent = `${initialTtsBuffer}s`;
 applyTtsUi();
 
-ttsToggle.addEventListener("click", () => {
-    setTtsEnabled(!ttsEnabled);
+ttsToggle.addEventListener("click", async () => {
+    await setTtsEnabled(!ttsEnabled);
     ttsToggle.blur();
 });
 

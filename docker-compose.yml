@@ -9,9 +9,6 @@ services:
       LEITURA_SSL_CERTFILE: ${LEITURA_SSL_CERTFILE:-}
       LEITURA_SSL_KEYFILE: ${LEITURA_SSL_KEYFILE:-}
       LEITURA_ALLOWED_HOSTS: ${LEITURA_ALLOWED_HOSTS:-}
-    depends_on:
-      tts:
-        condition: service_healthy
     volumes:
       - ./data:/app/data
       - ./certs:/app/certs:ro
@@ -22,6 +19,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    healthcheck:
+      test: ["CMD", "python", "scripts/container_healthcheck.py"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   tts:

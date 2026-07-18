@@ -203,3 +203,28 @@ class TtsBlockDetail(BaseModel):
 class TtsVoices(BaseModel):
     voices: list[str]
     default: str
+    available: bool = True
+    reason: str | None = None
+    retry_after: int | None = None
+
+
+class HealthOut(BaseModel):
+    version: str
+    status: Literal["healthy", "unhealthy"]
+    database: Literal["healthy", "unavailable"]
+
+
+class DiagnosticComponent(BaseModel):
+    status: Literal["healthy", "degraded", "unavailable", "not_required"]
+    required: bool
+    message: str
+    version: str | None = None
+    latency_ms: int | None = None
+    details: dict[str, object] | None = None
+
+
+class SystemDiagnostics(BaseModel):
+    version: str
+    status: Literal["healthy", "degraded", "unhealthy"]
+    generated_at: str
+    components: dict[str, DiagnosticComponent]

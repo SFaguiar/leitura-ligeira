@@ -5,6 +5,7 @@ from typing import Mapping
 
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_VALUES = frozenset({"0", "false", "no", "off"})
+APP_VERSION = "1.0.0-dev"
 
 
 def _read_bool(env: Mapping[str, str], name: str, default: bool = False) -> bool:

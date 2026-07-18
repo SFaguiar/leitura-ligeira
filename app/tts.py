@@ -49,7 +49,10 @@ MAX_NDJSON_LINE_BYTES = int(
     os.environ.get("KOKORO_MAX_NDJSON_LINE_BYTES", str(8 * 1024 * 1024))
 )
 MAX_TIMESTAMPS = int(os.environ.get("KOKORO_MAX_TIMESTAMPS", "4096"))
+MAX_VOICE_RESPONSE_BYTES = 256 * 1024
+MAX_DISCOVERED_VOICES = 512
 VOICE_CACHE_SECONDS = 300.0
+VOICE_FAILURE_CACHE_SECONDS = float(os.environ.get("KOKORO_FAILURE_CACHE_SECONDS", "10"))
 
 _HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)
 _HTTP_LIMITS = httpx.Limits(max_connections=2, max_keepalive_connections=1)
@@ -81,6 +84,9 @@ _CIRCUIT_COOLDOWN_SECONDS = 30.0
 _voice_cache_lock = threading.Lock()
 _voice_cache: list[str] = []
 _voice_cache_until = 0.0
+_voice_cache_available: bool | None = None
+_voice_cache_reason: str | None = None
+_voice_cache_retry_after: int | None = None
 
 # Block sizing — identical to the frontend's flowBlocks (FLOW_BLOCK_SOFT/HARD)
 # so a TTS block and a Flow block cover the same span. A block closes at a
@@ -432,47 +438,109 @@ def call_kokoro(text: str, voice: str) -> tuple[bytes, list[dict]]:
     ) from fallback_error
 
 
-def fetch_voices(*, force: bool = False) -> list[str]:
-    """List voices Kokoro offers, using a bounded best-effort TTL cache."""
+def _circuit_retry_after() -> int | None:
+    with _circuit_lock:
+        remaining = _circuit_open_until - time.monotonic()
+    return max(1, math.ceil(remaining)) if remaining > 0 else None
+
+
+def _voice_failure_message(exc: Exception) -> tuple[str, int]:
+    if isinstance(exc, KokoroCircuitOpenError):
+        return "Narrador em recuperação após falhas repetidas.", _circuit_retry_after() or 5
+    if isinstance(exc, httpx.ConnectError):
+        return "Servidor de narração local não está ativo.", 5
+    if isinstance(exc, httpx.TimeoutException):
+        return "Servidor de narração local não respondeu a tempo.", 5
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"Servidor de narração respondeu HTTP {exc.response.status_code}.", 5
+    return "Servidor de narração retornou uma resposta inválida.", 5
+
+
+def fetch_voice_status(*, force: bool = False) -> dict[str, object]:
     global _voice_cache, _voice_cache_until
+    global _voice_cache_available, _voice_cache_reason, _voice_cache_retry_after
     now = time.monotonic()
     with _voice_cache_lock:
-        if not force and _voice_cache and now < _voice_cache_until:
-            return list(_voice_cache)
+        if not force and _voice_cache_available is not None and now < _voice_cache_until:
+            return {
+                "voices": list(_voice_cache),
+                "available": _voice_cache_available,
+                "reason": _voice_cache_reason,
+                "retry_after": _voice_cache_retry_after,
+            }
     try:
+        _check_circuit()
         with httpx.Client(
-            timeout=httpx.Timeout(connect=3.0, read=7.0, write=5.0, pool=3.0),
+            timeout=httpx.Timeout(connect=1.5, read=3.0, write=3.0, pool=1.5),
             limits=_HTTP_LIMITS,
             follow_redirects=False,
+            trust_env=False,
         ) as client:
-            resp = client.get(f"{_validated_kokoro_url()}/v1/audio/voices")
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception:
+            with client.stream(
+                "GET", f"{_validated_kokoro_url()}/v1/audio/voices"
+            ) as resp:
+                resp.raise_for_status()
+                body = bytearray()
+                for chunk in resp.iter_bytes():
+                    if len(body) + len(chunk) > MAX_VOICE_RESPONSE_BYTES:
+                        raise KokoroProtocolError("Lista de vozes excedeu o limite seguro.")
+                    body.extend(chunk)
+            data = json.loads(body.decode("utf-8"))
+        voices = data.get("voices") if isinstance(data, dict) else data
+        if not isinstance(voices, list):
+            raise KokoroProtocolError("Lista de vozes ausente.")
+        # Kokoro-FastAPI v0.6 returns [{"id": "pf_dora", ...}], while older
+        # releases returned a flat string list. Accept both contracts so voice
+        # discovery remains compatible across the pinned runtime and old installs.
+        result: list[str] = []
+        for voice in voices:
+            if isinstance(voice, str):
+                voice_id = voice
+            elif isinstance(voice, dict):
+                voice_id = voice.get("id")
+            else:
+                voice_id = None
+            if (
+                isinstance(voice_id, str)
+                and 0 < len(voice_id) <= 80
+                and re.fullmatch(r"[A-Za-z0-9_-]+", voice_id)
+            ):
+                result.append(voice_id)
+        result = sorted(set(result))[:MAX_DISCOVERED_VOICES]
+        if not result:
+            raise KokoroProtocolError("Nenhuma voz disponível.")
+    except Exception as exc:
+        reason, retry_after = _voice_failure_message(exc)
+        _logger.info("Descoberta de vozes indisponível: %s", type(exc).__name__)
         with _voice_cache_lock:
-            return list(_voice_cache)
-    voices = data.get("voices") if isinstance(data, dict) else data
-    if not isinstance(voices, list):
-        return []
-    # Kokoro-FastAPI v0.6 returns [{"id": "pf_dora", ...}], while older
-    # releases returned a flat string list. Accept both contracts so voice
-    # discovery remains compatible across the pinned runtime and old installs.
-    result: list[str] = []
-    for voice in voices:
-        if isinstance(voice, str):
-            voice_id = voice
-        elif isinstance(voice, dict):
-            voice_id = voice.get("id")
-        else:
-            voice_id = None
-        if isinstance(voice_id, str) and voice_id:
-            result.append(voice_id)
-    result = sorted(set(result))
+            stale_voices = list(_voice_cache)
+            _voice_cache_available = False
+            _voice_cache_reason = reason
+            _voice_cache_retry_after = retry_after
+            _voice_cache_until = time.monotonic() + VOICE_FAILURE_CACHE_SECONDS
+        return {
+            "voices": stale_voices,
+            "available": False,
+            "reason": reason,
+            "retry_after": retry_after,
+        }
     with _voice_cache_lock:
         _voice_cache = result
+        _voice_cache_available = True
+        _voice_cache_reason = None
+        _voice_cache_retry_after = None
         _voice_cache_until = time.monotonic() + VOICE_CACHE_SECONDS
-    return list(result)
+    return {
+        "voices": list(result),
+        "available": True,
+        "reason": None,
+        "retry_after": None,
+    }
 
+
+def fetch_voices(*, force: bool = False) -> list[str]:
+    """List voices Kokoro offers, using a bounded best-effort TTL cache."""
+    return list(fetch_voice_status(force=force)["voices"])
 
 # --- Fuzzy alignment ---------------------------------------------------------
 

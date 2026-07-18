@@ -34,21 +34,23 @@ if errorlevel 1 (
     goto start_app
 )
 
-docker info >nul 2>&1
+".venv\Scripts\python.exe" scripts\check_environment.py --docker-ready >nul 2>&1
 if errorlevel 1 (
     echo [AVISO] Docker Desktop nao esta ativo. O leitor iniciara sem narrador.
     echo Abra o Docker Desktop antes de ligar o narrador.
     goto start_app
 )
 
-echo Kokoro esta parado; iniciando a dependencia local...
-docker compose up -d --wait tts
+echo Kokoro esta parado; iniciando a dependencia local em segundo plano...
+docker compose up -d tts
 if errorlevel 1 (
-    echo [AVISO] Kokoro nao ficou saudavel. O leitor iniciara sem narrador.
-    echo Execute verificar_ambiente.bat e docker compose logs tts para diagnosticar.
-) else (
-    echo Kokoro iniciado e saudavel.
+    echo [AVISO] Nao foi possivel solicitar a inicializacao do Kokoro.
+    echo O leitor iniciara normalmente sem narrador.
+    goto start_app
 )
+
+echo Kokoro solicitado. A inicializacao do modelo continuara em segundo plano.
+echo Se ainda estiver carregando, o Narrador permitira tentar novamente.
 
 :start_app
 ".venv\Scripts\python.exe" scripts\run_server.py %*

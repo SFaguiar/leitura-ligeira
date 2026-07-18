@@ -92,8 +92,28 @@ Baselines e mínimos da Release 1.0:
 - Node 25.2.1 é usado somente pelos testes JavaScript, não em produção.
 
 O inicializador testa primeiro se o Kokoro já está saudável. Somente quando ele
-está parado tenta acionar o Docker. Se Docker ou Kokoro estiver indisponível, a
-aplicação continua funcionando sem narrador e mostra orientação de diagnóstico.
+está parado tenta acionar o Docker. A solicitação de startup ocorre em segundo
+plano: se Docker ou Kokoro estiver indisponível ou ainda carregando, biblioteca,
+Foco e Fluxo abrem normalmente e o botão do Narrador oferece uma nova tentativa.
+
+### Modo degradado e diagnóstico
+
+Docker, Kokoro, Ollama e internet são dependências opcionais. A aplicação e o
+SQLite iniciam de forma independente; a ausência do Kokoro desativa apenas a
+narração e nunca esconde os controles normais de WPM/chunk. Falhas de descoberta
+de vozes ficam em cache por 10 segundos para evitar esperas e requisições
+repetidas, e a interface mostra uma mensagem recuperável.
+
+O diagnóstico local consolidado pode ser executado sem iniciar o servidor:
+
+```powershell
+.\verificar_ambiente.bat
+```
+
+Com o servidor ativo, `GET /system/health` é uma sonda pública mínima para
+aplicação/SQLite. `GET /system/diagnostics` exige login e informa versão,
+integridade do banco, Kokoro, Ollama, HTTP/HTTPS e se internet é necessária,
+sem expor caminhos locais ou detalhes de exceções.
 
 ### Narrador local (Kokoro)
 
@@ -118,8 +138,9 @@ como `http://tts:8880` automaticamente.
 docker compose up --build
 ```
 
-O banco fica em `./data/app.db` (montado como volume). O Compose expõe a
-aplicação à LAN deliberadamente e monta `./certs` como somente leitura.
+O banco fica em `./data/app.db` (montado como volume). O Compose mantém a
+aplicação em loopback por padrão; defina `LEITURA_BIND_ADDRESS=0.0.0.0` somente
+para exposição deliberada à LAN. A pasta `./certs` é montada como somente leitura.
 
 ## Backup e restauração
 

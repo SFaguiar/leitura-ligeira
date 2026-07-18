@@ -1213,13 +1213,29 @@ diário.
   cobertos, incluindo rollback transacional forçado; a suíte completa terminou
   com 38 testes verdes.
 
-#### [ ] R5 — Degradação segura das dependências locais
+#### [x] R5 — Degradação segura das dependências locais *(encerrado em 2026-07-18)*
 - Biblioteca e leitor permanecem utilizáveis sem Docker, Kokoro, Ollama ou
   internet.
 - TTS e futuras integrações mostram estado indisponível sem derrubar a página.
 - Timeouts, cancelamentos, limites de concorrência e mensagens recuperáveis.
 - Criar diagnóstico consolidado de aplicação, banco, Kokoro, Ollama, HTTPS e
   versão instalada.
+
+**Implementado em 2026-07-18:**
+- `app` e `tts` não possuem mais dependência de startup no Compose. O launcher
+  solicita o Kokoro em segundo plano, mas abre a aplicação imediatamente; a
+  biblioteca, Foco e Fluxo não consultam serviços opcionais para funcionar.
+- Descoberta de vozes tem timeout curto, cache negativo de 10 segundos,
+  circuit breaker compartilhado e contrato explícito `available/reason/retry_after`.
+  A UI preserva WPM/chunk normais, explica a indisponibilidade e oferece nova
+  tentativa sem pausar ou corromper o estado do leitor.
+- `GET /system/health` verifica somente aplicação/SQLite; o diagnóstico
+  autenticado `GET /system/diagnostics` agrega versão, integridade do banco,
+  Kokoro, Ollama, transporte HTTP/HTTPS e independência de internet com sondas
+  paralelas, limitadas e sem refletir exceções internas.
+- A aplicação ganhou healthcheck HTTP/HTTPS no contêiner e o diagnóstico CLI
+  cobre também engine Docker, serviço Ollama e versão instalada. Cinco testes
+  de degradação elevaram a regressão Python a 56 casos, além do harness TTS.
 
 #### [x] R6 — Hardening de segurança da aplicação *(encerrado em 2026-07-18)*
 - Revisar sessão, CSRF, CSP, CORS, hosts permitidos e rotação no login.

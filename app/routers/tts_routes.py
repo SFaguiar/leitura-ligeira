@@ -23,7 +23,7 @@ import threading
 from contextlib import contextmanager
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from app import tts
@@ -121,10 +121,14 @@ def _find_block(conn, document_id: int, start_token: int, voice: str):
 
 
 @router.get("/tts/voices", response_model=TtsVoices)
-def list_voices(user: dict = Depends(get_current_user)):
+def list_voices(
+    refresh: bool = Query(default=False),
+    user: dict = Depends(get_current_user),
+):
     """Voices Kokoro offers, for the UI picker. Empty list if Kokoro is down —
     the frontend falls back to `default`."""
-    return {"voices": tts.fetch_voices(), "default": tts.DEFAULT_VOICE}
+    status = tts.fetch_voice_status(force=refresh)
+    return {**status, "default": tts.DEFAULT_VOICE}
 
 
 @router.post("/documents/{document_id}/tts/blocks", response_model=TtsBlockDetail)
@@ -136,12 +140,14 @@ def create_tts_block(
     voice = (payload.voice or tts.DEFAULT_VOICE).strip() or tts.DEFAULT_VOICE
     if len(voice) > 80:
         raise HTTPException(status_code=422, detail="Identificador de voz muito longo.")
-    available_voices = tts.fetch_voices()
-    if not available_voices:
+    voice_status = tts.fetch_voice_status()
+    available_voices = voice_status["voices"]
+    if not voice_status["available"]:
+        retry_after = int(voice_status["retry_after"] or 5)
         raise HTTPException(
             status_code=503,
-            detail="O serviço de narração não está pronto para validar as vozes.",
-            headers={"Retry-After": "5"},
+            detail=voice_status["reason"] or "O serviço de narração não está disponível.",
+            headers={"Retry-After": str(retry_after)},
         )
     if voice not in available_voices:
         raise HTTPException(status_code=422, detail="Voz de narração não reconhecida.")

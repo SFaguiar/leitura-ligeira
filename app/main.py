@@ -8,9 +8,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import database
-from app.config import TransportSecurityConfig
+from app.auth import get_current_user
+from app.config import APP_VERSION, TransportSecurityConfig
+from app.diagnostics import collect_diagnostics, database_health
 from app.database import init_db
 from app.routers import documents, import_routes, progress, sessions, stats, tts_routes, users
+from app.schemas import HealthOut, SystemDiagnostics
 from app.security import (
     SecurityHeadersMiddleware,
     configure_security_logging,
@@ -49,6 +52,7 @@ def create_app(transport: TransportSecurityConfig | None = None) -> FastAPI:
     transport = transport or TransportSecurityConfig.from_env()
     application = FastAPI(
         title="Leitura Ligeira",
+        version=APP_VERSION,
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -110,6 +114,26 @@ def create_app(transport: TransportSecurityConfig | None = None) -> FastAPI:
             "lan_enabled": transport.lan_enabled,
             "warning": None if request_is_https else "HTTP sem criptografia; use somente em rede doméstica confiável.",
         }
+
+    @application.get("/system/health", response_model=HealthOut)
+    def health_status():
+        database_component = database_health()
+        healthy = database_component["status"] == "healthy"
+        return JSONResponse(
+            status_code=200 if healthy else 503,
+            content={
+                "version": APP_VERSION,
+                "status": "healthy" if healthy else "unhealthy",
+                "database": database_component["status"],
+            },
+        )
+
+    @application.get("/system/diagnostics", response_model=SystemDiagnostics)
+    def system_diagnostics(
+        request: Request,
+        user: dict = Depends(get_current_user),
+    ):
+        return collect_diagnostics(transport, request.url.scheme)
 
     @application.get("/")
     def index():
