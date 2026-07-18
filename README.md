@@ -148,6 +148,27 @@ pre-restore, permitindo rollback manual:
 
     .\restaurar_leitura_ligeira.bat backups\ARQUIVO.zip --target-data-dir data --replace
 
+## Migrações automáticas e rollback
+
+`init_db()` versiona o schema com `PRAGMA user_version`. Antes de alterar um
+banco existente, o servidor cria e verifica um backup em
+`backups/migrations/`; se o backup falhar, a migração nem começa. A alteração
+roda numa transação e só é confirmada depois de `PRAGMA integrity_check` e
+`PRAGMA foreign_key_check` passarem. Bancos criados por uma versão futura são
+recusados para impedir downgrade acidental.
+
+Para conferir o banco atual manualmente:
+
+    .venv\Scripts\python.exe -c "from app.database import check_database; print(check_database())"
+
+Para desfazer uma migração, encerre o servidor e restaure o ZIP imediatamente
+anterior. O diretório migrado ainda será preservado com sufixo `pre-restore`:
+
+    .\restaurar_leitura_ligeira.bat backups\migrations\ARQUIVO.zip --target-data-dir data --replace
+
+Não apague o ZIP até validar login, biblioteca e abertura de um documento. Ele
+contém o banco e a chave de sessão e deve ser protegido como dado sensível.
+
 ## HTTPS local opcional
 
 HTTPS não é obrigatório para uso no próprio PC ou numa LAN doméstica

@@ -1189,11 +1189,29 @@ diário.
 - Instalação limpa em C:\tmp e build Linux do zero passaram; ambos carregaram
   todas as dependências e as 29 rotas da aplicação.
 
-#### [ ] R4 — Migrações e integridade do SQLite
+#### [x] R4 — Migrações e integridade do SQLite *(encerrado em 2026-07-18)*
 - Testar banco vazio, banco legado e execução repetida de init_db().
 - Fazer backup antes de migrações e documentar restauração como rollback.
 - Executar PRAGMA integrity_check; revisar constraints e índices.
 - Garantir try/finally e conn.close() em toda conexão aberta.
+
+**Implementado em 2026-07-18:**
+- `PRAGMA user_version` versiona o schema; banco mais novo que a aplicação é
+  recusado e a execução repetida de `init_db()` é idempotente.
+- Toda migração de banco existente exige primeiro um snapshot v1 verificado em
+  `backups/migrations/`. Alterações e reparos rodam em transação, seguidos por
+  `integrity_check`, `foreign_key_check` e rollback automático em erro.
+- A auditoria do banco real encontrou oito referências órfãs invisíveis nas
+  consultas: seis progressos e duas sessões ligados a documentos removidos.
+  O backup prévio foi preservado e o reparo eliminou somente essas linhas.
+- `documents.owner_id` passou a ter FK em schemas que ainda não possuíam a
+  coluna e gatilhos equivalentes nos bancos legados; índices de listagem por
+  proprietário/data e deduplicação por proprietário/hash foram adicionados.
+- Todas as aberturas por `get_connection()` em aplicação e utilitário de reset
+  de senha usam timeout de 5 s e fechamento em `finally`, verificado por AST.
+- Banco vazio, legado, execução repetida, schema futuro e rollback foram
+  cobertos, incluindo rollback transacional forçado; a suíte completa terminou
+  com 38 testes verdes.
 
 #### [ ] R5 — Degradação segura das dependências locais
 - Biblioteca e leitor permanecem utilizáveis sem Docker, Kokoro, Ollama ou
