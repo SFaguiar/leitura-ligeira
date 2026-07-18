@@ -22,7 +22,7 @@
             <span class="brand-tagline">Sua biblioteca de leitura atenta</span>
         </div>
     </div>
-    <div class="topbar-actions">
+    <nav class="topbar-actions" aria-label="Ações globais">
         <button id="shortcuts-btn" class="icon-btn topbar-tool" type="button" title="Ver atalhos de teclado" aria-haspopup="dialog">
             <span aria-hidden="true">?</span><span class="topbar-tool-label">Atalhos</span>
         </button>
@@ -30,8 +30,8 @@
             <span aria-hidden="true">⚙</span><span class="topbar-tool-label">Sistema</span>
         </button>
         <label class="skin-picker" title="Escolher aparência">
-            <span class="sr-only">Aparencia</span>
-            <select id="skin-select" aria-label="Aparencia">
+            <span class="sr-only">Aparência</span>
+            <select id="skin-select" aria-label="Aparência">
                 <option value="library">Biblioteca</option>
                 <option value="odysseus">Odysseus</option>
             </select>
@@ -39,7 +39,7 @@
         <span id="current-user-name" class="current-user-name" hidden></span>
         <button id="logout-btn" class="btn" type="button" title="Sair" hidden>Sair</button>
         <button id="theme-toggle" class="icon-btn" type="button" title="Alternar tema" aria-label="Ativar tema escuro" aria-pressed="false">🌙</button>
-    </div>
+    </nav>
 </header>
 
 <div id="transport-warning" class="transport-warning" role="status" aria-live="polite" hidden>
@@ -65,7 +65,7 @@
     <div class="modal-card">
         <h2 id="login-modal-name">Entrar</h2>
         <label for="login-password">Senha</label>
-        <input id="login-password" type="password" maxlength="256" autocomplete="current-password" placeholder="Sua senha" />
+        <input id="login-password" type="password" maxlength="256" autocomplete="current-password" placeholder="Sua senha" aria-describedby="login-error" />
         <p id="login-error" class="error-text" role="alert" hidden></p>
         <div class="modal-actions">
             <button type="button" id="login-cancel-btn" class="btn">Cancelar</button>
@@ -78,9 +78,9 @@
     <div class="modal-card">
         <h2 id="new-profile-heading">Novo perfil</h2>
         <label for="new-profile-name">Nome</label>
-        <input id="new-profile-name" type="text" maxlength="80" autocomplete="username" placeholder="Seu nome" />
+        <input id="new-profile-name" type="text" maxlength="80" autocomplete="username" placeholder="Seu nome" aria-describedby="new-profile-error" />
         <label for="new-profile-password">Senha</label>
-        <input id="new-profile-password" type="password" minlength="8" maxlength="256" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" />
+        <input id="new-profile-password" type="password" minlength="8" maxlength="256" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" aria-describedby="new-profile-error" />
         <p id="new-profile-error" class="error-text" role="alert" hidden></p>
         <div class="modal-actions">
             <button type="button" id="new-profile-cancel-btn" class="btn">Cancelar</button>
@@ -248,9 +248,9 @@
     <div class="modal-card">
         <h2 id="edit-doc-heading">Editar documento</h2>
         <label for="edit-doc-title">Título</label>
-        <input id="edit-doc-title" type="text" placeholder="Título" />
+        <input id="edit-doc-title" type="text" placeholder="Título" aria-describedby="edit-doc-error" />
         <label for="edit-doc-collection">Coleção (opcional)</label>
-        <input id="edit-doc-collection" type="text" placeholder="Ex: Ficção, Trabalho..." list="edit-doc-collection-list" />
+        <input id="edit-doc-collection" type="text" placeholder="Ex: Ficção, Trabalho..." list="edit-doc-collection-list" aria-describedby="edit-doc-error" />
         <datalist id="edit-doc-collection-list"></datalist>
         <p id="edit-doc-error" class="error-text" role="alert" hidden></p>
         <div class="modal-actions">
@@ -271,27 +271,27 @@
 
         <div id="doc-tab-paste" class="doc-tab-panel" role="tabpanel" aria-labelledby="doc-tab-paste-btn">
             <label for="doc-title">Título</label>
-            <input id="doc-title" type="text" placeholder="Ex: Artigo sobre X" />
+            <input id="doc-title" type="text" placeholder="Ex: Artigo sobre X" aria-describedby="doc-error" />
             <label for="doc-text">Texto</label>
-            <textarea id="doc-text" rows="10" placeholder="Cole o texto aqui..."></textarea>
+            <textarea id="doc-text" rows="10" placeholder="Cole o texto aqui..." aria-describedby="doc-error"></textarea>
         </div>
 
         <div id="doc-tab-file" class="doc-tab-panel" role="tabpanel" aria-labelledby="doc-tab-file-btn" hidden>
             <label for="doc-file-title">Título (opcional)</label>
-            <input id="doc-file-title" type="text" placeholder="Usa o nome do arquivo se vazio" />
+            <input id="doc-file-title" type="text" placeholder="Usa o nome do arquivo se vazio" aria-describedby="doc-error" />
             <label for="doc-file-input">Arquivo — PDF, EPUB ou TXT (máx. 50MB)</label>
-            <input id="doc-file-input" type="file" accept=".pdf,.epub,.txt" />
+            <input id="doc-file-input" type="file" accept=".pdf,.epub,.txt" aria-describedby="doc-error" />
         </div>
 
         <div id="doc-tab-url" class="doc-tab-panel" role="tabpanel" aria-labelledby="doc-tab-url-btn" hidden>
             <label for="doc-url-title">Título (opcional)</label>
-            <input id="doc-url-title" type="text" placeholder="Usa o título da página se vazio" />
+            <input id="doc-url-title" type="text" placeholder="Usa o título da página se vazio" aria-describedby="doc-error" />
             <label for="doc-url-input">URL</label>
-            <input id="doc-url-input" type="url" placeholder="https://..." />
+            <input id="doc-url-input" type="url" placeholder="https://..." aria-describedby="doc-error" />
         </div>
 
         <label class="checkbox-row">
-            <input id="doc-private" type="checkbox" />
+            <input id="doc-private" type="checkbox" aria-describedby="doc-error" />
             Documento privado (só eu vejo)
         </label>
         <p id="doc-error" class="error-text" role="alert" hidden></p>
@@ -302,14 +302,15 @@
     </div>
 </div>
 
-<main id="reader-view" class="view" tabindex="-1" aria-label="Leitor" hidden>
+<main id="reader-view" class="view" tabindex="-1" aria-labelledby="reader-title" aria-describedby="reader-accessibility-help" hidden>
+    <p id="reader-accessibility-help" class="sr-only">O modo Foco apresenta palavras rapidamente sem anunciá-las uma a uma. Use o modo Fluxo para ler o texto contínuo com tecnologia assistiva. Os controles de reprodução permanecem disponíveis nos dois modos.</p>
     <div class="reader-topbar">
         <button id="back-btn" class="icon-btn" type="button" title="Voltar à biblioteca" aria-label="Voltar à biblioteca">←</button>
         <div class="toc-wrapper">
             <button id="toc-btn" class="icon-btn" type="button" title="Capítulos" aria-label="Abrir capítulos" aria-expanded="false" aria-controls="toc-dropdown" hidden>≡</button>
-            <div id="toc-dropdown" class="toc-dropdown" role="navigation" aria-label="Capítulos do documento" hidden>
+            <nav id="toc-dropdown" class="toc-dropdown" aria-label="Capítulos do documento" hidden>
                 <ul id="toc-list" class="toc-list"></ul>
-            </div>
+            </nav>
         </div>
         <h2 id="reader-title" class="reader-title" tabindex="-1"></h2>
         <div class="mode-switch" role="group" aria-label="Modo de leitura">
@@ -318,9 +319,9 @@
         </div>
     </div>
 
-    <div id="rsvp-stage" class="rsvp-stage" role="button" tabindex="0" title="Toque para reproduzir ou pausar" aria-label="Área de leitura. Reproduzir ou pausar">
-        <div id="rsvp-display" class="rsvp-display">Pronto</div>
-    </div>
+    <button id="rsvp-stage" class="rsvp-stage" type="button" title="Toque para reproduzir ou pausar" aria-label="Área de leitura. Reproduzir ou pausar">
+        <span id="rsvp-display" class="rsvp-display" aria-hidden="true">Pronto</span>
+    </button>
 
     <div id="flow-region" class="flow-region" aria-label="Texto em modo Fluxo" hidden>
         <div id="flow-content" class="flow-content"></div>
@@ -333,7 +334,7 @@
         </div>
         <div id="paragraph-marks" class="paragraph-marks"></div>
     </div>
-    <div id="reading-progress-info" class="reading-progress-info" role="status" aria-live="polite"></div>
+    <div id="reading-progress-info" class="reading-progress-info"></div>
 
     <div class="controls">
         <div class="transport">

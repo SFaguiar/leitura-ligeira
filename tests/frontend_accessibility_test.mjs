@@ -46,14 +46,14 @@ assert.match(app, /function openDialog\(modal, initialFocus\)/);
 assert.match(app, /function closeDialog\(modal\)/);
 assert.match(app, /function focusableElements\(modal\)/);
 assert.match(app, /event\.key !== "Tab"/);
-assert.match(app, /docInfo\.setAttribute\("role", "button"\)/);
-assert.match(app, /docInfo\.addEventListener\("keydown"/);
+assert.match(app, /<button class="doc-info" type="button">/);
+assert.doesNotMatch(app, /docInfo\.addEventListener\("keydown"/);
 assert.match(app, /button\.className = "toc-entry-btn"/);
 
 assert.match(html, /id="scrubber"[^>]*role="slider"[^>]*tabindex="0"/);
 assert.match(app, /scrubber\.addEventListener\("keydown"/);
 assert.match(app, /e\.target\.closest\("input, select, textarea, button, a,/);
-assert.match(app, /rsvpStage\.addEventListener\("keydown"/);
+assert.doesNotMatch(app, /rsvpStage\.addEventListener\("keydown"/);
 assert.match(css, /\.btn,[\s\S]*min-height: 44px;/);
 assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation-duration: 0\.01ms !important/);
 assert.match(css, /\.skip-link:focus[\s\S]*transform: translateY\(0\)/);

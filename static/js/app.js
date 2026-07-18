@@ -471,12 +471,24 @@ function showToast(message, { error = false, timeout = 7000 } = {}) {
     appToastMessage.textContent = message;
     appToast.classList.toggle("error", error);
     appToast.setAttribute("role", error ? "alert" : "status");
+    appToast.setAttribute("aria-live", error ? "assertive" : "polite");
     appToast.hidden = false;
     if (timeout > 0) {
         toastTimer = setTimeout(() => {
             appToast.hidden = true;
         }, timeout);
     }
+}
+
+function clearFieldError(errorElement, controls) {
+    errorElement.hidden = true;
+    controls.forEach((control) => control.removeAttribute("aria-invalid"));
+}
+
+function showFieldError(errorElement, message, controls) {
+    errorElement.textContent = message;
+    errorElement.hidden = false;
+    controls.forEach((control) => control.setAttribute("aria-invalid", "true"));
 }
 
 function openDialog(modal, initialFocus) {
@@ -581,6 +593,7 @@ function showLogin() {
 
 async function loadProfileList() {
     profileList.replaceChildren();
+    profileFeedback.setAttribute("role", "status");
     profileFeedback.hidden = false;
     profileFeedbackText.textContent = "Carregando perfis...";
     profileRetryBtn.hidden = true;
@@ -595,18 +608,14 @@ async function loadProfileList() {
         }
         users.forEach((u) => {
             const li = document.createElement("li");
-            li.textContent = u.name;
-            li.addEventListener("click", () => openLoginModal(u.name));
-            li.dataset.initial = u.name.trim().charAt(0).toUpperCase() || "?";
-            li.setAttribute("role", "button");
-            li.setAttribute("aria-label", `Entrar como ${u.name}`);
-            li.tabIndex = 0;
-            li.addEventListener("keydown", (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    openLoginModal(u.name);
-                }
-            });
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "profile-button";
+            button.textContent = u.name;
+            button.dataset.initial = u.name.trim().charAt(0).toUpperCase() || "?";
+            button.setAttribute("aria-label", `Entrar como ${u.name}`);
+            button.addEventListener("click", () => openLoginModal(u.name));
+            li.appendChild(button);
             profileList.appendChild(li);
         });
     } catch {
@@ -657,7 +666,7 @@ function openLoginModal(name) {
     loginTargetName = name;
     loginModalName.textContent = name;
     loginPasswordInput.value = "";
-    loginError.hidden = true;
+    clearFieldError(loginError, [loginPasswordInput]);
     openDialog(loginModal, loginPasswordInput);
 }
 function closeLoginModal() {
@@ -676,11 +685,10 @@ loginPasswordInput.addEventListener("keydown", (e) => {
 loginSubmitBtn.addEventListener("click", async () => {
     const password = loginPasswordInput.value;
     if (!password) {
-        loginError.textContent = "Digite a senha.";
-        loginError.hidden = false;
+        showFieldError(loginError, "Digite a senha.", [loginPasswordInput]);
         return;
     }
-    loginError.hidden = true;
+    clearFieldError(loginError, [loginPasswordInput]);
     setButtonBusy(loginSubmitBtn, true, "Entrando...");
     try {
         const res = await securityFetch("/login", {
@@ -689,8 +697,11 @@ loginSubmitBtn.addEventListener("click", async () => {
             body: JSON.stringify({ name: loginTargetName, password }),
         });
         if (!res.ok) {
-            loginError.textContent = await apiErrorMessage(res, "Nome ou senha incorretos.");
-            loginError.hidden = false;
+            showFieldError(
+                loginError,
+                await apiErrorMessage(res, "Nome ou senha incorretos."),
+                [loginPasswordInput],
+            );
             return;
         }
         currentUser = await res.json();
@@ -699,8 +710,11 @@ loginSubmitBtn.addEventListener("click", async () => {
         closeLoginModal();
         await afterLogin();
     } catch {
-        loginError.textContent = "Não foi possível entrar. Confira se o servidor continua ativo e tente novamente.";
-        loginError.hidden = false;
+        showFieldError(
+            loginError,
+            "Não foi possível entrar. Confira se o servidor continua ativo e tente novamente.",
+            [loginPasswordInput],
+        );
     } finally {
         setButtonBusy(loginSubmitBtn, false);
     }
@@ -708,7 +722,7 @@ loginSubmitBtn.addEventListener("click", async () => {
 function openNewProfileModal() {
     newProfileNameInput.value = "";
     newProfilePasswordInput.value = "";
-    newProfileError.hidden = true;
+    clearFieldError(newProfileError, [newProfileNameInput, newProfilePasswordInput]);
     openDialog(newProfileModal, newProfileNameInput);
 }
 function closeNewProfileModal() {
@@ -735,16 +749,14 @@ newProfileSubmitBtn.addEventListener("click", async () => {
     const name = newProfileNameInput.value.trim();
     const password = newProfilePasswordInput.value;
     if (!name) {
-        newProfileError.textContent = "Digite um nome.";
-        newProfileError.hidden = false;
+        showFieldError(newProfileError, "Digite um nome.", [newProfileNameInput]);
         return;
     }
     if (!password) {
-        newProfileError.textContent = "Escolha uma senha.";
-        newProfileError.hidden = false;
+        showFieldError(newProfileError, "Escolha uma senha.", [newProfilePasswordInput]);
         return;
     }
-    newProfileError.hidden = true;
+    clearFieldError(newProfileError, [newProfileNameInput, newProfilePasswordInput]);
     setButtonBusy(newProfileSubmitBtn, true, "Criando...");
     try {
         const res = await securityFetch("/users", {
@@ -753,8 +765,11 @@ newProfileSubmitBtn.addEventListener("click", async () => {
             body: JSON.stringify({ name, password }),
         });
         if (!res.ok) {
-            newProfileError.textContent = await apiErrorMessage(res, "Não foi possível criar o perfil.");
-            newProfileError.hidden = false;
+            showFieldError(
+                newProfileError,
+                await apiErrorMessage(res, "Não foi possível criar o perfil."),
+                [newProfileNameInput, newProfilePasswordInput],
+            );
             return;
         }
         currentUser = await res.json();
@@ -763,8 +778,11 @@ newProfileSubmitBtn.addEventListener("click", async () => {
         closeNewProfileModal();
         await afterLogin();
     } catch {
-        newProfileError.textContent = "Não foi possível criar o perfil. Confira o servidor e tente novamente.";
-        newProfileError.hidden = false;
+        showFieldError(
+            newProfileError,
+            "Não foi possível criar o perfil. Confira o servidor e tente novamente.",
+            [newProfileNameInput, newProfilePasswordInput],
+        );
     } finally {
         setButtonBusy(newProfileSubmitBtn, false);
     }
@@ -1325,10 +1343,11 @@ flowBackToPositionBtn.addEventListener("click", () => {
     scrollFlowToCurrentWord("smooth");
 });
 
-flowContent.addEventListener("click", (e) => {
+flowContent.addEventListener("click", async (e) => {
     const wordEl = e.target.closest(".flow-word");
     if (!wordEl) return;
-    navigateToToken(Number(wordEl.dataset.idx));
+    await navigateToToken(Number(wordEl.dataset.idx));
+    announceReaderPosition("Posição selecionada");
     if (navSnapBackOnClick) {
         modeFocusBtn.click();
     }
@@ -1387,6 +1406,7 @@ const engine = new RSVPEngine({
             fitDisplayText("Fim");
         }
         progressFill.style.width = "100%";
+        announce("Fim do documento. Leitura concluída.");
         // Fim de documento é sinal inequívoco no RSVP — marca 'lido'
         // automaticamente (reversível a qualquer momento na biblioteca).
         saveProgress({ status: "lido" });
@@ -1641,6 +1661,8 @@ async function doTogglePlay(btn) {
     if (ttsEnabled) {
         engine.pause();
         await ttsDriver.toggle();
+        if (ttsDriver.isLoading()) announce("Narração carregando.");
+        else announce(ttsDriver.isPlaying() ? "Narração reproduzindo." : "Narração pausada.");
         if (btn) btn.blur();
         return;
     }
@@ -1649,8 +1671,10 @@ async function doTogglePlay(btn) {
     refreshPlayButton();
     if (!wasPlaying && engine.playing) {
         openSessionIfNeeded();
+        announce("Leitura reproduzindo.");
     } else if (wasPlaying && !engine.playing) {
         saveProgress();
+        announce("Leitura pausada.");
     }
     if (btn) btn.blur();
 }
@@ -1690,14 +1714,26 @@ async function navigateToToken(tokenIdx) {
     refreshPlayButton();
 }
 
+function announceReaderPosition(prefix = "Posição atual") {
+    const total = engine.getTokens().length;
+    if (!total) {
+        announce(prefix + ": documento vazio.");
+        return;
+    }
+    const position = Math.max(0, Math.min(total - 1, engine.pointer)) + 1;
+    announce(prefix + ": palavra " + position.toLocaleString() + " de " + total.toLocaleString() + ".");
+}
+
 async function doRewind(btn) {
     await navigateToToken(rewindTarget());
+    announceReaderPosition("Retrocedido");
     saveProgress();
     if (btn) btn.blur();
 }
 
 async function doForward(btn) {
     await navigateToToken(forwardTarget());
+    announceReaderPosition("Avançado");
     saveProgress();
     if (btn) btn.blur();
 }
@@ -1706,12 +1742,6 @@ playPauseBtn.addEventListener("click", () => doTogglePlay(playPauseBtn));
 rewindBtn.addEventListener("click", () => doRewind(rewindBtn));
 forwardBtn.addEventListener("click", () => doForward(forwardBtn));
 rsvpStage.addEventListener("click", () => doTogglePlay());
-rsvpStage.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        doTogglePlay();
-    }
-});
 
 const initialTtsRate = Math.max(0.5, Math.min(4, Number(getSetting("ttsRate")) || 1));
 ttsRateSlider.value = initialTtsRate.toFixed(1);
@@ -1773,6 +1803,7 @@ function switchMode(mode, { push = true } = {}) {
     }
     engine.rerender();
     refreshPlayButton();
+    announce(mode === "flow" ? "Modo Fluxo. Texto contínuo disponível." : "Modo Foco. Exibição rápida ativa.");
     if (push) {
         history.pushState({ view: "reader", id: currentDocId, mode }, "", `#/read/${currentDocId}/${mode}`);
     }
@@ -1807,11 +1838,13 @@ scrubber.addEventListener("pointermove", (e) => {
 scrubber.addEventListener("pointerup", async () => {
     scrubbing = false;
     await scrubSeekPromise;
+    announceReaderPosition("Posição alterada");
     saveProgress();
 });
 scrubber.addEventListener("pointercancel", async () => {
     scrubbing = false;
     await scrubSeekPromise;
+    announceReaderPosition("Posição alterada");
     saveProgress();
 });
 scrubber.addEventListener("keydown", async (event) => {
@@ -1829,6 +1862,7 @@ scrubber.addEventListener("keydown", async (event) => {
     if (target === null) return;
     event.preventDefault();
     await navigateToToken(target);
+    announceReaderPosition("Posição alterada");
     saveProgress();
 });
 
@@ -2603,13 +2637,13 @@ function buildDocListItem(doc) {
 
     const li = document.createElement("li");
     li.innerHTML = `
-        <div class="doc-info">
-            <div class="doc-title"></div>
-            <div class="doc-meta"></div>
-            <div class="doc-progress-bar" ${doc.progress_status ? "" : "hidden"}>
-                <div class="doc-progress-fill" style="width: ${pct}%"></div>
-            </div>
-        </div>
+        <button class="doc-info" type="button">
+            <span class="doc-title"></span>
+            <span class="doc-meta"></span>
+            <span class="doc-progress-bar" ${doc.progress_status ? "" : "hidden"}>
+                <span class="doc-progress-fill" style="width: ${pct}%"></span>
+            </span>
+        </button>
         <div class="doc-actions">
             <select class="status-select" title="Status de leitura">
                 ${doc.progress_status ? "" : '<option value="" selected disabled>— sem status —</option>'}
@@ -2628,17 +2662,8 @@ function buildDocListItem(doc) {
         `~${estimatedMinutes(doc.word_count)} min · ${new Date(doc.created_at).toLocaleString()}${privacyTag}`;
 
     const docInfo = li.querySelector(".doc-info");
-    docInfo.setAttribute("role", "button");
     docInfo.setAttribute("aria-label", `Abrir ${doc.title}`);
-    docInfo.tabIndex = 0;
     docInfo.addEventListener("click", () => openLibraryDocument(doc));
-    docInfo.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            openLibraryDocument(doc);
-        }
-    });
-
     const statusSelect = li.querySelector(".status-select");
     statusSelect.setAttribute("aria-label", `Status de leitura de ${doc.title}`);
     statusSelect.addEventListener("change", async (e) => {
@@ -2979,7 +3004,7 @@ function openEditDocModal(doc) {
     editDocTarget = doc;
     editDocTitleInput.value = doc.title;
     editDocCollectionInput.value = doc.collection || "";
-    editDocError.hidden = true;
+    clearFieldError(editDocError, [editDocTitleInput, editDocCollectionInput]);
     openDialog(editDocModal, editDocTitleInput);
 }
 function closeEditDocModal() {
@@ -2996,11 +3021,10 @@ editDocSaveBtn.addEventListener("click", async () => {
     if (!doc) return;
     const title = editDocTitleInput.value.trim();
     if (!title) {
-        editDocError.textContent = "Título não pode ser vazio.";
-        editDocError.hidden = false;
+        showFieldError(editDocError, "Título não pode ser vazio.", [editDocTitleInput]);
         return;
     }
-    editDocError.hidden = true;
+    clearFieldError(editDocError, [editDocTitleInput, editDocCollectionInput]);
     setButtonBusy(editDocSaveBtn, true, "Salvando...");
     try {
         const res = await apiFetch(`/documents/${doc.id}`, {
@@ -3010,16 +3034,22 @@ editDocSaveBtn.addEventListener("click", async () => {
         });
         if (!res.ok) {
             if (res.status === 401) return;
-            editDocError.textContent = await apiErrorMessage(res, "Falha ao salvar o documento.");
-            editDocError.hidden = false;
+            showFieldError(
+                editDocError,
+                await apiErrorMessage(res, "Falha ao salvar o documento."),
+                [editDocTitleInput, editDocCollectionInput],
+            );
             return;
         }
         closeEditDocModal();
         fetchLibrary();
         showToast("Documento atualizado.");
     } catch {
-        editDocError.textContent = "Não foi possível salvar. Confira o servidor e tente novamente.";
-        editDocError.hidden = false;
+        showFieldError(
+            editDocError,
+            "Não foi possível salvar. Confira o servidor e tente novamente.",
+            [editDocTitleInput, editDocCollectionInput],
+        );
     } finally {
         setButtonBusy(editDocSaveBtn, false);
     }
@@ -3077,9 +3107,18 @@ DOC_TAB_BUTTONS.forEach((button, index) => {
     });
 });
 
-function showDocError(message) {
-    docError.textContent = message;
-    docError.hidden = false;
+const DOC_FORM_CONTROLS = [
+    docTitleInput,
+    docTextInput,
+    docFileTitleInput,
+    docFileInput,
+    docUrlTitleInput,
+    docUrlInput,
+    docPrivateInput,
+];
+
+function showDocError(message, controls = DOC_FORM_CONTROLS) {
+    showFieldError(docError, message, controls);
 }
 
 function openModal() {
@@ -3090,7 +3129,7 @@ function openModal() {
     docUrlTitleInput.value = "";
     docUrlInput.value = "";
     docPrivateInput.checked = false;
-    docError.hidden = true;
+    clearFieldError(docError, DOC_FORM_CONTROLS);
     switchDocTab("paste");
     openDialog(newDocModal, docTitleInput);
 }
@@ -3121,14 +3160,14 @@ document.addEventListener("keydown", (e) => {
 });
 
 saveDocBtn.addEventListener("click", async () => {
-    docError.hidden = true;
+    clearFieldError(docError, DOC_FORM_CONTROLS);
     const visibility = docPrivateInput.checked ? "private" : "house";
     let makeRequest;
 
     if (activeDocTab === "paste") {
         const text = docTextInput.value.trim();
         if (!text) {
-            showDocError("Cole algum texto antes de salvar.");
+            showDocError("Cole algum texto antes de salvar.", [docTextInput]);
             return;
         }
         const title = docTitleInput.value.trim() || text.slice(0, 40);
@@ -3140,7 +3179,7 @@ saveDocBtn.addEventListener("click", async () => {
     } else if (activeDocTab === "file") {
         const file = docFileInput.files[0];
         if (!file) {
-            showDocError("Escolha um arquivo.");
+            showDocError("Escolha um arquivo.", [docFileInput]);
             return;
         }
         const formData = new FormData();
@@ -3153,7 +3192,7 @@ saveDocBtn.addEventListener("click", async () => {
     } else {
         const url = docUrlInput.value.trim();
         if (!url) {
-            showDocError("Cole uma URL.");
+            showDocError("Cole uma URL.", [docUrlInput]);
             return;
         }
         makeRequest = () => apiFetch("/documents/url", {
@@ -3198,6 +3237,7 @@ function renderToc(toc) {
         button.addEventListener("click", async () => {
             closeTocDropdown();
             await navigateToToken(entry.token_index);
+            announceReaderPosition("Capítulo " + entry.title);
             saveProgress();
         });
         li.appendChild(button);

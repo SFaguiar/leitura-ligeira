@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv/
+node_modules/
 *.egg-info/
 
 # Data (personal reading library — never commit real content)

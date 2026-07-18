@@ -1,0 +1,14 @@
+{
+  "name": "leitura-ligeira-release-tools",
+  "private": true,
+  "engines": {
+    "node": ">=25.2.1"
+  },
+  "scripts": {
+    "test:screenreader": "node tests/frontend_screenreader_test.mjs",
+    "test:axe": "node tests/frontend_axe_test.mjs"
+  },
+  "devDependencies": {
+    "axe-core": "4.12.1"
+  }
+}

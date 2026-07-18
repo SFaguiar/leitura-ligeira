@@ -183,7 +183,21 @@ body {
 .doc-info {
     flex: 1;
     min-width: 0;
+    width: 100%;
+    appearance: none;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
+}
+
+.doc-title,
+.doc-meta,
+.doc-progress-bar {
+    display: block;
 }
 
 .doc-info:active {
@@ -299,7 +313,15 @@ body {
     gap: 0.6rem;
 }
 
-.profile-list li {
+.profile-list > li {
+    min-width: 0;
+}
+
+.profile-button {
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -308,7 +330,7 @@ body {
     cursor: pointer;
 }
 
-.profile-list li:active {
+.profile-button:active {
     opacity: 0.8;
 }
 
@@ -476,6 +498,11 @@ body {
 
 .rsvp-stage {
     display: flex;
+    width: 100%;
+    appearance: none;
+    padding: 0;
+    color: var(--fg);
+    font: inherit;
     align-items: center;
     justify-content: center;
     min-height: 30vh;
@@ -1504,7 +1531,7 @@ textarea:focus-visible,
     margin: 0 0 1rem;
 }
 
-.profile-list li {
+.profile-button {
     position: relative;
     min-height: 82px;
     display: flex;
@@ -1519,7 +1546,7 @@ textarea:focus-visible,
     transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
 
-.profile-list li::before {
+.profile-button::before {
     content: attr(data-initial);
     position: absolute;
     left: 1rem;
@@ -1535,7 +1562,7 @@ textarea:focus-visible,
     font-size: 1rem;
 }
 
-.profile-list li:hover {
+.profile-button:hover {
     border-color: var(--accent);
     box-shadow: var(--shadow-md);
     transform: translateY(-2px);
@@ -1873,7 +1900,7 @@ textarea:focus-visible,
     .icon-btn,
     .mode-btn,
     .document-list li,
-    .profile-list li {
+    .profile-button {
         transition: none;
     }
 }
@@ -1958,7 +1985,7 @@ html[data-skin="odysseus"] .reader-title,
 html[data-skin="odysseus"] .doc-title,
 html[data-skin="odysseus"] .stat-card strong,
 html[data-skin="odysseus"] .rsvp-display,
-html[data-skin="odysseus"] .profile-list li {
+html[data-skin="odysseus"] .profile-button {
     font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
     letter-spacing: 0.015em;
 }
@@ -2072,7 +2099,7 @@ html[data-skin="odysseus"] .doc-info:focus-visible {
     outline-color: rgba(121, 184, 206, 0.75);
 }
 
-html[data-skin="odysseus"] .profile-list li {
+html[data-skin="odysseus"] .profile-button {
     min-height: 78px;
     color: #cbd7dc;
     border-color: #263e48;
@@ -2083,14 +2110,14 @@ html[data-skin="odysseus"] .profile-list li {
     box-shadow: 0 7px 20px rgba(0, 0, 0, 0.2);
 }
 
-html[data-skin="odysseus"] .profile-list li::before {
+html[data-skin="odysseus"] .profile-button::before {
     color: #0d1012;
     border-radius: 3px;
     background: #75b4ca;
     box-shadow: inset 3px 0 #9dd5e7, 0 0 14px rgba(117, 180, 202, 0.13);
 }
 
-html[data-skin="odysseus"] .profile-list li:hover {
+html[data-skin="odysseus"] .profile-button:hover {
     color: #eef8fb;
     border-color: #4a7c8e;
     box-shadow: 0 0 0 1px rgba(117, 180, 202, 0.09), 0 12px 26px rgba(0, 0, 0, 0.28);

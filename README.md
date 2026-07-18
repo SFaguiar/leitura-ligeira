@@ -29,7 +29,8 @@ O produto está funcionalmente congelado e atravessou os gates R1–R8. Hoje há
 A release internacional agora exige os gates R9–R14: leitores de tela e
 semântica; baixa visão/mobilidade; neurodiversidade; equivalência auditiva;
 internacionalização com novo nome e inglês padrão; e auditoria humana final.
-O próximo gate é **R9 — tecnologias assistivas**. A versão `1.0.0-rc1` só será
+A implementação automatizável do R9 está pronta; o fechamento ainda depende da
+matriz humana com NVDA, JAWS, VoiceOver e TalkBack. A versão `1.0.0-rc1` só será
 gerada no R14, depois da tradução/rebranding do R13.
 
 **Nota sobre WPM:** o número no slider é o throughput *efetivo* — palavras
@@ -114,9 +115,11 @@ sem expor caminhos locais ou detalhes de exceções.
 
 ### Gate de release
 
-Antes de publicar ou aceitar uma alteração como candidata à release, execute:
+Antes de publicar ou aceitar uma alteração como candidata à release, instale as
+ferramentas de auditoria JavaScript fixadas e execute:
 
 ```powershell
+npm ci
 .\verificar_release.bat
 ```
 
@@ -126,9 +129,19 @@ HTML/CSS/JS, acessibilidade/contraste/reflow essenciais, a regressão do driver
 TTS, um soak determinístico de 6.000 tokens em 4x, o Compose e a integridade do
 SQLite. O processo retorna código diferente
 de zero na primeira falha e grava um relatório JSON atômico em
-`release-reports/`. Em uma máquina deliberadamente sem Docker, use
-`.\verificar_release.bat --skip-docker`; todos os demais gates continuam
-obrigatórios.
+`release-reports/`. O passo axe exige Edge, Chrome ou Chromium; um caminho não
+padrão pode ser informado por `AXE_BROWSER_PATH`. Em uma máquina
+deliberadamente sem Docker, use `.\verificar_release.bat --skip-docker`; todos
+os demais gates continuam obrigatórios.
+
+### Acessibilidade
+
+A declaração provisória, o escopo já auditado e as limitações reais estão em
+[ACCESSIBILITY.md](ACCESSIBILITY.md). O roteiro reproduzível e a matriz humana
+obrigatória estão em
+[ACCESSIBILITY_TESTING.md](ACCESSIBILITY_TESTING.md). A automação cobre
+contratos semânticos, 16 auditorias axe e a árvore acessível do Edge, mas não substitui testes
+com NVDA, JAWS, VoiceOver e TalkBack.
 
 ### Narrador local (Kokoro)
 

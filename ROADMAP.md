@@ -1326,6 +1326,12 @@ SQLite v2/WAL; evidência em `release-gate-20260718T212837.json`.
 locales devem atender WCAG 2.2 níveis A e AA. Automação ajuda, mas não encerra
 o gate sem avaliação humana.
 
+**Estado em 2026-07-18:** implementação e automação concluídas, com contratos
+semânticos e 16 combinações estado/skin aprovadas pelo axe-core 4.12.1 e pela árvore acessível do Edge. O gate
+permanece aberto porque NVDA/JAWS não estão instalados e VoiceOver/TalkBack
+exigem equipamentos externos. A matriz executável e a declaração provisória
+estão em `ACCESSIBILITY_TESTING.md` e `ACCESSIBILITY.md`.
+
 - Auditar landmarks, hierarquia de headings, ordem de leitura, nomes e
   descrições acessíveis, relações label/erro/ajuda e conteúdo não textual.
 - Revisar todas as mudanças dinâmicas: foco previsível, `aria-live` sem excesso,

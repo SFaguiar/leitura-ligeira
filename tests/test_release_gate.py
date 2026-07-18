@@ -41,6 +41,8 @@ class ReleaseGateTests(unittest.TestCase):
             "tts-regression",
             "frontend-contract",
             "frontend-accessibility",
+            "frontend-screenreader",
+            "frontend-axe",
             "tts-4x-soak",
             "git-whitespace",
             "git-staged-whitespace",

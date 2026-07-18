@@ -57,6 +57,16 @@ def build_steps(*, include_docker: bool = True) -> list[GateStep]:
             (node, "tests/frontend_accessibility_test.mjs"),
             60,
         ),
+        GateStep(
+            "frontend-screenreader",
+            (node, "tests/frontend_screenreader_test.mjs"),
+            60,
+        ),
+        GateStep(
+            "frontend-axe",
+            (node, "tests/frontend_axe_test.mjs", python),
+            120,
+        ),
         GateStep("tts-4x-soak", (node, "tests/tts_soak_test.mjs"), 120),
         GateStep("git-whitespace", (git, "diff", "--check"), 30),
         GateStep("git-staged-whitespace", (git, "diff", "--cached", "--check"), 30),
