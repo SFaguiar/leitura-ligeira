@@ -1168,13 +1168,26 @@ diário.
 - Backup real restaurado em pasta limpa: integrity check ok, 3 documentos,
   3 usuários e chave de sessão idêntica, sem tocar no banco de produção.
 
-#### [ ] R3 — Congelamento e reprodução do ambiente
+#### [x] R3 — Congelamento e reprodução do ambiente *(encerrado em 2026-07-18)*
 - Fixar versões Python e de todas as dependências.
 - Fixar a imagem do Kokoro por versão/digest; eliminar dependência de latest.
 - Documentar versões mínimas de Python, Docker, Ollama e modelo recomendado.
 - Endurecer o inicializador para detectar dependências, iniciar somente o que
   estiver parado e apresentar erros acionáveis.
 - Validar instalação limpa em outra pasta ou máquina.
+
+**Implementado em 2026-07-18:**
+- Python nativo definido como >=3.13.11 e <3.14; .python-version fixa 3.13.11.
+  requirements.lock congela 42 pacotes diretos e transitivos.
+- A imagem da aplicação usa Python 3.13.11 slim-bookworm por tag e digest; o
+  Kokoro 0.6.0 CUDA 12.8 já permanece fixado por tag e digest.
+- O diagnóstico verifica Python, lock, Docker, Compose, Kokoro e Ollama.
+  O launcher só inicia Kokoro quando necessário e segue sem TTS se Docker ou
+  o serviço estiver indisponível.
+- Mínimos documentados: Docker Engine 24, Compose 2.30 e Ollama opcional 0.32.0
+  com qwen3:8b recomendado para futuras perguntas.
+- Instalação limpa em C:\tmp e build Linux do zero passaram; ambos carregaram
+  todas as dependências e as 29 rotas da aplicação.
 
 #### [ ] R4 — Migrações e integridade do SQLite
 - Testar banco vazio, banco legado e execução repetida de init_db().

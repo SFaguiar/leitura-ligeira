@@ -42,8 +42,8 @@ velocidade antes da Fase 1.6 (quando era nominal), recalibre.
 ## Rodando localmente (sem Docker)
 
 ```powershell
-py -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+py -3.13 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.lock
 iniciar_leitura_ligeira.bat
 ```
 
@@ -70,6 +70,30 @@ valida todo par de certificado/chave antes de abrir a porta.
 Se a porta já contiver uma instância compatível do Leitura Ligeira, o runner
 informa a URL e encerra sem erro. Para outro programa ou modo de transporte,
 ele explica o conflito antes do Uvicorn; escolha outra porta com --port 8001.
+
+### Ambiente reproduzível
+
+A instalação nativa suportada usa Python >=3.13.11 e <3.14. O arquivo
+requirements.lock fixa as 42 dependências diretas e transitivas; requirements.txt
+permanece apenas como lista humana das dependências diretas. Antes de iniciar, o
+launcher confere a versão do Python e cada pacote instalado.
+
+    .\verificar_ambiente.bat
+
+Baselines e mínimos da Release 1.0:
+
+- Python 3.13.11; pip 25.3 foi usado para gerar e validar o lock.
+- Docker Engine 24.0 ou superior e Docker Compose 2.30.0 ou superior.
+  O baseline validado foi Engine 29.5.3 e Compose 5.1.4.
+- A imagem da aplicação usa Python 3.13.11 slim-bookworm com digest imutável.
+- Kokoro-FastAPI 0.6.0 CUDA 12.8 também usa tag e digest imutáveis.
+- Ollama é opcional e não bloqueia biblioteca, leitor ou narrador. Para futuras
+  perguntas de compreensão, o baseline é Ollama 0.32.0 com qwen3:8b.
+- Node 25.2.1 é usado somente pelos testes JavaScript, não em produção.
+
+O inicializador testa primeiro se o Kokoro já está saudável. Somente quando ele
+está parado tenta acionar o Docker. Se Docker ou Kokoro estiver indisponível, a
+aplicação continua funcionando sem narrador e mostra orientação de diagnóstico.
 
 ### Narrador local (Kokoro)
 

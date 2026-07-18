@@ -6,31 +6,7 @@ cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (
     echo [ERRO] Ambiente virtual nao encontrado em .venv\Scripts\python.exe
-    echo Crie o ambiente e instale requirements.txt antes de iniciar o servico.
-    pause
-    exit /b 1
-)
-
-where docker >nul 2>&1
-if errorlevel 1 (
-    echo [ERRO] Docker nao foi encontrado no PATH.
-    echo Inicie o Docker Desktop e tente novamente.
-    pause
-    exit /b 1
-)
-
-echo Verificando o Docker Desktop e iniciando o Kokoro, se necessario...
-docker info >nul 2>&1
-if errorlevel 1 (
-    echo [ERRO] O Docker Desktop nao esta ativo ou nao respondeu.
-    echo Inicie o Docker Desktop e tente novamente.
-    pause
-    exit /b 1
-)
-
-docker compose up -d --wait tts
-if errorlevel 1 (
-    echo [ERRO] Nao foi possivel iniciar ou aguardar o servico Kokoro.
+    echo Crie-o com Python 3.13.11 e instale requirements.lock.
     pause
     exit /b 1
 )
@@ -39,6 +15,42 @@ set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONPATH=%CD%"
 
+".venv\Scripts\python.exe" scripts\check_environment.py --runtime
+if errorlevel 1 (
+    pause
+    exit /b 1
+)
+
+".venv\Scripts\python.exe" scripts\check_environment.py --kokoro-ready >nul 2>&1
+if not errorlevel 1 (
+    echo Kokoro ja esta ativo e saudavel.
+    goto start_app
+)
+
+where docker >nul 2>&1
+if errorlevel 1 (
+    echo [AVISO] Docker nao encontrado. O leitor iniciara sem narrador.
+    echo Instale Docker Desktop para habilitar o TTS local.
+    goto start_app
+)
+
+docker info >nul 2>&1
+if errorlevel 1 (
+    echo [AVISO] Docker Desktop nao esta ativo. O leitor iniciara sem narrador.
+    echo Abra o Docker Desktop antes de ligar o narrador.
+    goto start_app
+)
+
+echo Kokoro esta parado; iniciando a dependencia local...
+docker compose up -d --wait tts
+if errorlevel 1 (
+    echo [AVISO] Kokoro nao ficou saudavel. O leitor iniciara sem narrador.
+    echo Execute verificar_ambiente.bat e docker compose logs tts para diagnosticar.
+) else (
+    echo Kokoro iniciado e saudavel.
+)
+
+:start_app
 ".venv\Scripts\python.exe" scripts\run_server.py %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
