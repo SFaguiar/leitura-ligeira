@@ -1,7 +1,7 @@
 # Dependências diretas para manutenção humana. Instalações reproduzíveis e o
 # Docker usam requirements.lock, que fixa também todas as transitivas.
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
 itsdangerous==2.2.0
 python-multipart==0.0.32
 pymupdf==1.28.0
