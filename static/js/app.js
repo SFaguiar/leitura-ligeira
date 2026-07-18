@@ -255,7 +255,7 @@ async function flushSettingsSync() {
     settingsSyncQueue = {};
     if (Object.keys(body).length === 0) return;
     try {
-        await fetch("/me/settings", {
+        await securityFetch("/me/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
@@ -317,10 +317,59 @@ themeToggle.addEventListener("click", () => {
 // é o único lugar que reage a uma sessão expirada/inválida. (currentUser is
 // declared earlier, in the Settings module, to avoid a TDZ hit — see there.)
 
+let csrfToken = null;
+let csrfRequest = null;
+
+function clearCsrfToken() {
+    csrfToken = null;
+    csrfRequest = null;
+}
+
+async function ensureCsrfToken() {
+    if (csrfToken) return csrfToken;
+    if (!csrfRequest) {
+        csrfRequest = fetch("/security/csrf", { cache: "no-store" })
+            .then(async (response) => {
+                if (!response.ok) throw new Error("Não foi possível iniciar a proteção CSRF.");
+                const payload = await response.json();
+                if (!payload.token) throw new Error("Token CSRF ausente.");
+                csrfToken = payload.token;
+                return csrfToken;
+            })
+            .finally(() => {
+                csrfRequest = null;
+            });
+    }
+    return csrfRequest;
+}
+
+async function securityFetch(url, options = {}, retried = false) {
+    const method = String(options.method || "GET").toUpperCase();
+    const unsafe = !["GET", "HEAD", "OPTIONS"].includes(method);
+    const requestOptions = { ...options };
+    if (unsafe) {
+        const headers = new Headers(options.headers || {});
+        headers.set("X-CSRF-Token", await ensureCsrfToken());
+        requestOptions.headers = headers;
+    }
+    const response = await fetch(url, requestOptions);
+    if (
+        unsafe &&
+        !retried &&
+        response.status === 403 &&
+        response.headers.get("X-CSRF-Required") === "1"
+    ) {
+        clearCsrfToken();
+        return securityFetch(url, options, true);
+    }
+    return response;
+}
+
 async function apiFetch(url, options) {
-    const res = await fetch(url, options);
+    const res = await securityFetch(url, options);
     if (res.status === 401) {
         currentUser = null;
+        clearCsrfToken();
         showLogin();
     }
     return res;
@@ -437,7 +486,7 @@ loginSubmitBtn.addEventListener("click", async () => {
         loginError.hidden = false;
         return;
     }
-    const res = await fetch("/login", {
+    const res = await securityFetch("/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: loginTargetName, password }),
@@ -448,6 +497,8 @@ loginSubmitBtn.addEventListener("click", async () => {
         return;
     }
     currentUser = await res.json();
+    clearCsrfToken();
+    await ensureCsrfToken();
     closeLoginModal();
     await afterLogin();
 });
@@ -492,7 +543,7 @@ newProfileSubmitBtn.addEventListener("click", async () => {
         newProfileError.hidden = false;
         return;
     }
-    const res = await fetch("/users", {
+    const res = await securityFetch("/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, password }),
@@ -503,6 +554,8 @@ newProfileSubmitBtn.addEventListener("click", async () => {
         return;
     }
     currentUser = await res.json();
+    clearCsrfToken();
+    await ensureCsrfToken();
     closeNewProfileModal();
     await afterLogin();
 });
@@ -514,7 +567,8 @@ logoutBtn.addEventListener("click", async () => {
     }
     stopTtsForLifecycle();
     engine.pause();
-    await fetch("/logout", { method: "POST" });
+    await securityFetch("/logout", { method: "POST" });
+    clearCsrfToken();
     currentUser = null;
     showLogin();
 });
@@ -1939,6 +1993,17 @@ async function showReader(id, push = true, mode = "focus") {
     if (requestId !== readerRequestId) return;
     if (progressRes.ok) {
         const progress = await progressRes.json();
+        // O comentário histórico acima descrevia um upsert em GET. Desde R6,
+        // a leitura é pura e a promoção é este PUT protegido por CSRF.
+        if (progress.status === "quero_ler") {
+            const promoted = await apiFetch(`/documents/${id}/progress`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "lendo" }),
+            });
+            if (!promoted.ok || requestId !== readerRequestId) return;
+        }
+        if (requestId !== readerRequestId) return;
         // seekToIndex() já dispara _render() -> onChunk, que já sabe decidir
         // entre Foco/Fluxo — nenhuma chamada extra de highlight necessária.
         if (progress.position > 0) {

@@ -5,7 +5,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "app.db"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SQLITE_TIMEOUT_SECONDS = 5.0
 _logger = logging.getLogger(__name__)
 
@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS users (
     password_salt TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'member',
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -117,6 +125,11 @@ USER_SETTINGS_MIGRATIONS = [
 
 SCHEMA_OBJECTS = [
     (
+        "idx_auth_sessions_user_expires",
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_expires "
+        "ON auth_sessions(user_id, expires_at)",
+    ),
+    (
         "idx_reading_progress_user",
         "CREATE INDEX IF NOT EXISTS idx_reading_progress_user ON reading_progress(user_id)",
     ),
@@ -182,6 +195,7 @@ SCHEMA_OBJECTS = [
 REQUIRED_TABLES = {
     "documents",
     "users",
+    "auth_sessions",
     "user_settings",
     "reading_progress",
     "reading_sessions",
@@ -194,8 +208,8 @@ class DatabaseIntegrityError(RuntimeError):
     pass
 
 
-def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
-    db_path = Path(db_path)
+def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
+    db_path = Path(db_path or DB_PATH)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, timeout=SQLITE_TIMEOUT_SECONDS)
     conn.row_factory = sqlite3.Row
@@ -306,6 +320,11 @@ def _repair_referential_integrity(conn: sqlite3.Connection) -> dict[str, int]:
             "AND NOT EXISTS (SELECT 1 FROM users WHERE users.id = documents.owner_id)",
         ),
         (
+            "auth_sessions",
+            "DELETE FROM auth_sessions "
+            "WHERE NOT EXISTS (SELECT 1 FROM users WHERE users.id = auth_sessions.user_id)",
+        ),
+        (
             "user_settings",
             "DELETE FROM user_settings "
             "WHERE NOT EXISTS (SELECT 1 FROM users WHERE users.id = user_settings.user_id)",
@@ -380,7 +399,7 @@ def _apply_schema(conn: sqlite3.Connection) -> dict[str, int]:
         raise
 
 
-def check_database(db_path: Path = DB_PATH) -> dict[str, object]:
+def check_database(db_path: Path | None = None) -> dict[str, object]:
     conn = get_connection(db_path)
     try:
         _assert_integrity(conn)
@@ -399,10 +418,10 @@ def check_database(db_path: Path = DB_PATH) -> dict[str, object]:
 
 
 def init_db(
-    db_path: Path = DB_PATH,
+    db_path: Path | None = None,
     migration_backup_dir: Path | None = None,
 ) -> Path | None:
-    db_path = Path(db_path).expanduser().resolve()
+    db_path = Path(db_path or DB_PATH).expanduser().resolve()
     conn = get_connection(db_path)
     try:
         tables = _table_names(conn)

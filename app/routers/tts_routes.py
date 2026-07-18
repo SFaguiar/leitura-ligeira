@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import threading
+from contextlib import contextmanager
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -39,6 +40,7 @@ TTS_DIR = DB_PATH.parent / "tts"
 # block serialize instead of both generating. The dict itself is guarded by
 # _locks_guard. In-memory is enough — single home instance, no multi-worker.
 _locks: dict[tuple, threading.Lock] = {}
+_lock_users: dict[tuple, int] = {}
 _locks_guard = threading.Lock()
 
 # A single RTX 5060 Ti serves this local instance. Different canonical block
@@ -57,11 +59,43 @@ def _lock_for(key: tuple) -> threading.Lock:
         if lock is None:
             lock = threading.Lock()
             _locks[key] = lock
+        _lock_users[key] = _lock_users.get(key, 0) + 1
         return lock
+
+
+@contextmanager
+def _block_lock(key: tuple):
+    lock = _lock_for(key)
+    try:
+        with lock:
+            yield
+    finally:
+        with _locks_guard:
+            remaining = _lock_users.get(key, 1) - 1
+            if remaining <= 0 and _locks.get(key) is lock:
+                _lock_users.pop(key, None)
+                _locks.pop(key, None)
+            else:
+                _lock_users[key] = remaining
 
 
 def _audio_url(document_id: int, block_id: int) -> str:
     return f"/documents/{document_id}/tts/blocks/{block_id}/audio"
+
+
+def _safe_audio_path(filename: str):
+    if (
+        not isinstance(filename, str)
+        or len(filename) > 255
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", filename)
+    ):
+        return None
+    try:
+        base = TTS_DIR.resolve()
+        candidate = (base / filename).resolve()
+    except OSError:
+        return None
+    return candidate if candidate.parent == base else None
 
 
 def _row_to_detail(row) -> dict:
@@ -139,7 +173,7 @@ def create_tts_block(
         return _row_to_detail(existing)
 
     key = (document_id, start_token, voice, tts.MODEL_VERSION)
-    with _lock_for(key):
+    with _block_lock(key):
         # Re-check under the lock: another request may have finished meanwhile.
         conn = get_connection()
         try:
@@ -172,7 +206,7 @@ def create_tts_block(
                     headers={"Retry-After": "30"},
                 ) from exc
             except tts.KokoroUnavailableError as exc:
-                _logger.exception("Kokoro falhou completamente ao gerar bloco")
+                _logger.warning("Kokoro falhou completamente ao gerar bloco: %s", type(exc).__name__)
                 raise HTTPException(
                     status_code=502,
                     detail=(
@@ -191,7 +225,7 @@ def create_tts_block(
                     detail="O servidor Kokoro demorou demais para gerar o áudio.",
                 ) from exc
             except Exception as exc:  # malformed/unexpected response — surface as 502
-                _logger.exception("Falha inesperada no adaptador Kokoro")
+                _logger.warning("Falha inesperada no adaptador Kokoro: %s", type(exc).__name__)
                 raise HTTPException(
                     status_code=502,
                     detail="O serviço de narração retornou uma resposta inválida.",
@@ -261,7 +295,7 @@ def get_tts_audio(
         conn.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Audio block not found")
-    path = TTS_DIR / row["audio_path"]
-    if not path.exists():
+    path = _safe_audio_path(row["audio_path"])
+    if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Audio file missing")
     return FileResponse(path, media_type=tts.AUDIO_MEDIA_TYPE)

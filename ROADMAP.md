@@ -1221,13 +1221,32 @@ diário.
 - Criar diagnóstico consolidado de aplicação, banco, Kokoro, Ollama, HTTPS e
   versão instalada.
 
-#### [ ] R6 — Hardening de segurança da aplicação
+#### [x] R6 — Hardening de segurança da aplicação *(encerrado em 2026-07-18)*
 - Revisar sessão, CSRF, CSP, CORS, hosts permitidos e rotação no login.
 - Limitar tentativas de login sem comprometer o uso doméstico.
 - Validar tamanho, tipo e nome de uploads; impedir path traversal.
 - Blindar importação por URL contra SSRF, redirecionamentos perigosos e
   respostas excessivas.
 - Confirmar que logs e respostas nunca vazam senhas, cookies ou stack traces.
+
+**Implementado em 2026-07-18:**
+- Sessão opaca server-side em `auth_sessions`, rotacionada no login, revogada no
+  logout e armazenada no SQLite somente como SHA-256. CSRF é obrigatório em
+  toda mutação; Host, corpos, enums, tamanhos e intervalos têm validação
+  central ou por schema.
+- Login limita falhas por conta e IP, mantém resposta e custo criptográfico
+  indistinguíveis para usuário ausente e eleva PBKDF2 legado de 200 mil para
+  600 mil iterações no próximo acesso válido.
+- Uploads validam nome, extensão, MIME, assinatura e estrutura EPUB limitada.
+  Importação URL valida cada redirect, recusa IP não público e downgrade,
+  conecta ao IP auditado para impedir DNS rebinding e limita tempo e bytes.
+- CSP, headers defensivos, request ID, erro genérico e log JSON rotativo evitam
+  vazamento de traceback/credenciais. Docs automáticas foram desativadas.
+- O contêiner passou a rodar não-root, read-only, sem capabilities e preso ao
+  loopback por padrão. O mapeamento completo do OWASP Top 10:2025 está em
+  `SECURITY.md`.
+- A regressão terminou com 51 testes Python, harness TTS e checks JS verdes;
+  o contêiner real iniciou como UID 100 e abriu o SQLite v2 íntegro.
 
 #### [ ] R7 — Release gate automatizado e regressão real
 - Cobrir autenticação, importações, biblioteca, progresso, prateleiras,
@@ -1361,16 +1380,13 @@ rudimentar de contas, arrisca retrabalho).*
 
 ## Limitações aceitas (não resolver a menos que seja pedido)
 
-- **Senha sem exigência de complexidade obrigatória** — ambiente doméstico,
-  cada um escolhe a própria senha. Ainda é hasheada (pbkdf2) e verificada de
-  verdade (não é "sem segurança real").
-- **HTTP continua permitido somente para LAN doméstica confiável** — R1 deve
-  adicionar aviso explícito, HTTPS opcional e configuração segura de cookies
-  antes da release.
-- **Sem rate-limiting/lockout no login e sem reset de senha por UI** — home,
-  confiança, baixo risco. Esqueceu a senha? O admin roda
-  `scripts/reset_password.py` (CLI oculto, fora da API/UI, acesso direto ao
-  banco). Self-service fica pra Fase 13, ainda não deliberada.
+- **Senha sem regras de composição obrigatórias** — novas senhas exigem 8–256
+  caracteres, são hasheadas com PBKDF2 e hashes legados sobem de custo no login.
+- **HTTP continua permitido para loopback e LAN doméstica confiável** — R1
+  adicionou aviso explícito, HTTPS opcional e cookie Secure quando TLS está ativo.
+- **Sem reset de senha por UI** — o login já possui limitação por conta/IP;
+  recuperação continua pelo `scripts/reset_password.py` administrativo. O
+  self-service fica para a Fase 13, ainda não deliberada.
 - **Auto-registro aberto na LAN** — qualquer um na Wi-Fi cria um perfil; é
   confiança doméstica por design, não controle de acesso real.
 - PDFs de duas colunas ou com muitas notas de rodapé podem extrair em ordem

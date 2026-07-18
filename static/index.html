@@ -48,7 +48,7 @@
     <div class="modal-card">
         <h2 id="login-modal-name">Entrar</h2>
         <label for="login-password">Senha</label>
-        <input id="login-password" type="password" placeholder="Sua senha" />
+        <input id="login-password" type="password" maxlength="256" autocomplete="current-password" placeholder="Sua senha" />
         <p id="login-error" class="error-text" hidden></p>
         <div class="modal-actions">
             <button id="login-cancel-btn" class="btn">Cancelar</button>
@@ -61,9 +61,9 @@
     <div class="modal-card">
         <h2>Novo perfil</h2>
         <label for="new-profile-name">Nome</label>
-        <input id="new-profile-name" type="text" placeholder="Seu nome" />
+        <input id="new-profile-name" type="text" maxlength="80" autocomplete="username" placeholder="Seu nome" />
         <label for="new-profile-password">Senha</label>
-        <input id="new-profile-password" type="password" placeholder="Escolha uma senha" />
+        <input id="new-profile-password" type="password" minlength="8" maxlength="256" autocomplete="new-password" placeholder="Mínimo de 8 caracteres" />
         <p id="new-profile-error" class="error-text" hidden></p>
         <div class="modal-actions">
             <button id="new-profile-cancel-btn" class="btn">Cancelar</button>

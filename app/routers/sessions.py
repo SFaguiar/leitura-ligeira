@@ -38,6 +38,8 @@ def open_session(payload: SessionCreate, user: dict = Depends(get_current_user))
         doc = _get_visible_document(conn, payload.document_id, user)
         if doc is None:
             raise HTTPException(status_code=404, detail="Document not found")
+        if payload.start_pointer > doc["word_count"]:
+            raise HTTPException(status_code=422, detail="Posição inicial além do documento.")
 
         settings_row = conn.execute(
             "SELECT collect_stats FROM user_settings WHERE user_id = ?", (user["id"],)
@@ -66,14 +68,22 @@ def update_session(session_id: int, payload: SessionUpdate, user: dict = Depends
     conn = get_connection()
     try:
         session_row = conn.execute(
-            "SELECT * FROM reading_sessions WHERE id = ? AND user_id = ?",
+            "SELECT rs.*, d.word_count FROM reading_sessions rs "
+            "JOIN documents d ON d.id = rs.document_id "
+            "WHERE rs.id = ? AND rs.user_id = ?",
             (session_id, user["id"]),
         ).fetchone()
         if session_row is None:
             raise HTTPException(status_code=404, detail="Session not found")
 
+        if (
+            payload.end_pointer > session_row["word_count"]
+            or payload.position > session_row["word_count"]
+        ):
+            raise HTTPException(status_code=422, detail="Posição além do fim do documento.")
+
         now = _iso_now()
-        words_advanced = payload.end_pointer - session_row["start_pointer"]
+        words_advanced = max(0, payload.end_pointer - session_row["start_pointer"])
         if payload.ended_at:
             conn.execute(
                 "UPDATE reading_sessions SET end_pointer = ?, words_advanced = ?, "

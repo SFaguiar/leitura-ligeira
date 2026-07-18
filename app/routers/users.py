@@ -1,9 +1,18 @@
+import sqlite3
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.auth import get_current_user, hash_password, verify_password
+from app.auth import get_current_user, hash_password, verify_password_details
 from app.database import get_connection
+from app.security import (
+    LOGIN_RATE_LIMITER,
+    client_ip,
+    end_authenticated_session,
+    security_event,
+    start_authenticated_session,
+    subject_fingerprint,
+)
 from app.schemas import (
     LoginRequest,
     UserCreate,
@@ -14,6 +23,29 @@ from app.schemas import (
 )
 
 router = APIRouter()
+
+_COMMON_PASSWORDS = frozenset(
+    {
+        "12345678",
+        "123456789",
+        "password",
+        "qwerty123",
+        "admin123",
+        "letmein123",
+        "leitura123",
+    }
+)
+_DUMMY_SALT = "00" * 16
+_DUMMY_HASH = "00" * 32
+
+
+def _validate_new_password(password: str, name: str) -> None:
+    normalized = password.casefold()
+    if normalized in _COMMON_PASSWORDS or normalized == name.casefold():
+        raise HTTPException(
+            status_code=422,
+            detail="Escolha uma senha menos previsível e diferente do nome do perfil.",
+        )
 
 
 def _iso_now() -> str:
@@ -37,11 +69,17 @@ def create_user(payload: UserCreate, request: Request):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Nome não pode ser vazio.")
+    if any(ord(char) < 32 for char in name):
+        raise HTTPException(status_code=422, detail="Nome contém caracteres de controle.")
     if not payload.password:
         raise HTTPException(status_code=400, detail="Senha não pode ser vazia.")
+    _validate_new_password(payload.password, name)
 
     conn = get_connection()
     try:
+        # Serializa a eleição do primeiro administrador e impede que duas
+        # criações concorrentes observem simultaneamente um banco sem usuários.
+        conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute("SELECT id FROM users WHERE name = ?", (name,)).fetchone()
         if existing:
             raise HTTPException(status_code=409, detail="Esse nome já está em uso.")
@@ -64,35 +102,73 @@ def create_user(payload: UserCreate, request: Request):
             # unreachable now that every endpoint requires a logged-in user.
             conn.execute("UPDATE documents SET owner_id = ? WHERE owner_id IS NULL", (user_id,))
 
+        start_authenticated_session(conn, request, user_id)
         conn.commit()
         row = conn.execute("SELECT id, name, role FROM users WHERE id = ?", (user_id,)).fetchone()
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail="Esse nome já está em uso.") from exc
     finally:
         conn.close()
 
-    request.session["user_id"] = user_id
+    security_event("profile_create", "success", request, subject=user_id)
     return dict(row)
-
 
 @router.post("/login", response_model=UserMe)
 def login(payload: LoginRequest, request: Request):
+    name = payload.name.strip()
+    ip = client_ip(request)
+    subject = subject_fingerprint(name)
+    retry_after = LOGIN_RATE_LIMITER.retry_after(ip, name)
+    if retry_after:
+        security_event("login", "rate_limited", request, subject=subject)
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas tentativas. Aguarde antes de tentar novamente.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     conn = get_connection()
     try:
-        row = conn.execute(
-            "SELECT * FROM users WHERE name = ?", (payload.name.strip(),)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
     finally:
         conn.close()
-    if row is None or not verify_password(payload.password, row["password_salt"], row["password_hash"]):
+
+    salt = row["password_salt"] if row is not None else _DUMMY_SALT
+    expected = row["password_hash"] if row is not None else _DUMMY_HASH
+    valid, needs_upgrade = verify_password_details(payload.password, salt, expected)
+    if row is None or not valid:
+        LOGIN_RATE_LIMITER.failure(ip, name)
+        security_event("login", "failure", request, subject=subject)
         raise HTTPException(status_code=401, detail="Nome ou senha incorretos.")
-    request.session["user_id"] = row["id"]
+
+    LOGIN_RATE_LIMITER.success(ip, name)
+    conn = get_connection()
+    try:
+        if needs_upgrade:
+            upgraded_hash, _ = hash_password(payload.password, row["password_salt"])
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (upgraded_hash, row["id"]),
+            )
+        start_authenticated_session(conn, request, row["id"])
+        conn.commit()
+    finally:
+        conn.close()
+    security_event("login", "success", request, subject=row["id"])
     return {"id": row["id"], "name": row["name"], "role": row["role"]}
 
 
 @router.post("/logout")
 def logout(request: Request):
-    request.session.clear()
+    conn = get_connection()
+    try:
+        end_authenticated_session(conn, request)
+        conn.commit()
+    finally:
+        conn.close()
+    security_event("logout", "success", request)
     return {"ok": True}
-
 
 @router.get("/me", response_model=UserMe)
 def read_me(user: dict = Depends(get_current_user)):

@@ -68,6 +68,8 @@ class ServerRunnerTests(unittest.TestCase):
         self.assertEqual(kwargs["port"], 8765)
         self.assertIsNone(kwargs["ssl_certfile"])
         self.assertFalse(kwargs["proxy_headers"])
+        self.assertFalse(kwargs["server_header"])
+        self.assertFalse(kwargs["date_header"])
 
     def test_wildcard_host_requires_explicit_lan(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(

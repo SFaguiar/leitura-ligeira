@@ -126,7 +126,10 @@ class DatabaseMigrationTests(unittest.TestCase):
         backup = database.init_db(self.db_path, self.backup_dir)
         self.assertIsNotNone(backup)
         self.assertTrue(backup.is_file())
-        self.assertEqual(database.check_database(self.db_path)["schema_version"], 1)
+        self.assertEqual(
+            database.check_database(self.db_path)["schema_version"],
+            database.SCHEMA_VERSION,
+        )
 
         conn = database.get_connection(self.db_path)
         try:

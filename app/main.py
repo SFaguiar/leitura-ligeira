@@ -1,14 +1,23 @@
+import os
 import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from app import database
 from app.config import TransportSecurityConfig
 from app.database import init_db
 from app.routers import documents, import_routes, progress, sessions, stats, tts_routes, users
+from app.security import (
+    SecurityHeadersMiddleware,
+    configure_security_logging,
+    enforce_csrf,
+    issue_csrf_token,
+    security_event,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -18,26 +27,49 @@ SECRET_KEY_PATH = BASE_DIR / "data" / "secret_key"
 def _get_or_create_secret_key() -> str:
     SECRET_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
     if SECRET_KEY_PATH.exists():
-        return SECRET_KEY_PATH.read_text().strip()
+        key = SECRET_KEY_PATH.read_text(encoding="ascii").strip()
+        if len(key) < 64:
+            raise RuntimeError("data/secret_key está vazio ou inválido.")
+        return key
     key = secrets.token_hex(32)
-    SECRET_KEY_PATH.write_text(key)
+    try:
+        descriptor = os.open(
+            SECRET_KEY_PATH,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+    except FileExistsError:
+        return _get_or_create_secret_key()
+    with os.fdopen(descriptor, "w", encoding="ascii", newline="\n") as output:
+        output.write(key)
     return key
 
 
 def create_app(transport: TransportSecurityConfig | None = None) -> FastAPI:
     transport = transport or TransportSecurityConfig.from_env()
-    application = FastAPI(title="Leitura Ligeira")
+    application = FastAPI(
+        title="Leitura Ligeira",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        dependencies=[Depends(enforce_csrf)],
+    )
 
     init_db()
+    configure_security_logging(database.DB_PATH.parent / "logs" / "security.log")
 
     application.add_middleware(
         SessionMiddleware,
         secret_key=_get_or_create_secret_key(),
+        session_cookie="ll_session",
         max_age=60 * 60 * 24 * 30,  # 30 days — phones on the home network shouldn't have to log in constantly
         same_site="lax",
         https_only=transport.https_enabled,
     )
-
+    application.add_middleware(
+        SecurityHeadersMiddleware,
+        lan_enabled=transport.lan_enabled,
+    )
     application.include_router(users.router)
     application.include_router(documents.router)
     application.include_router(import_routes.router)
@@ -47,18 +79,27 @@ def create_app(transport: TransportSecurityConfig | None = None) -> FastAPI:
     application.include_router(tts_routes.router)
     application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-    @application.middleware("http")
-    async def no_cache(request: Request, call_next):
-        # Self-hosted single-instance app under active development — never let
-        # the browser skip the network round-trip and serve a stale build.
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        return response
+    @application.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception):
+        security_event(
+            "unhandled_exception",
+            "failure",
+            request,
+            detail=type(exc).__name__,
+        )
+        request_id = getattr(request.state, "request_id", secrets.token_hex(8))
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Erro interno inesperado.",
+                "request_id": request_id,
+            },
+            headers={"X-Request-ID": request_id},
+        )
 
+    @application.get("/security/csrf")
+    def csrf_token(request: Request):
+        return {"token": issue_csrf_token(request)}
     @application.get("/system/transport")
     def transport_status(request: Request):
         request_is_https = request.url.scheme == "https"

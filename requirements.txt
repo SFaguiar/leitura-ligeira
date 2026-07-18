@@ -8,3 +8,4 @@ pymupdf==1.28.0
 ebooklib==0.20
 trafilatura==2.1.0
 httpx==0.28.1
+urllib3==2.7.0

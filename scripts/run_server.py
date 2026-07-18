@@ -216,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
         host=host,
         port=args.port,
         proxy_headers=False,
+        server_header=False,
+        date_header=False,
         ssl_certfile=str(certfile) if certfile else None,
         ssl_keyfile=str(keyfile) if keyfile else None,
     )

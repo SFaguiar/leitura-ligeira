@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.auth import get_current_user
 from app.database import get_connection
-from app.extraction import extract_epub, extract_pdf, extract_url
+from app.extraction import extract_epub, extract_pdf, extract_url, validate_upload
 from app.routers.documents import (
     MAX_TITLE_CHARS,
     _hash_text,
@@ -74,44 +74,48 @@ def _create_document(
 @router.post("/documents/upload", response_model=DocumentDetail)
 async def upload_document(
     file: UploadFile = File(...),
-    title: str = Form(""),
-    visibility: str = Form("house"),
+    title: str = Form("", max_length=MAX_TITLE_CHARS),
+    visibility: str = Form("house", pattern="^(house|private)$"),
     user: dict = Depends(get_current_user),
 ):
-    raw = await file.read(MAX_FILE_BYTES + 1)
-    if len(raw) > MAX_FILE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Arquivo muito grande (máx. {MAX_FILE_BYTES // (1024 * 1024)}MB).",
-        )
-
-    filename = (file.filename or "").lower()
-    visibility = "private" if visibility == "private" else "house"
-
     try:
-        if filename.endswith(".pdf"):
-            text, toc = extract_pdf(raw)
-            format_ = "pdf"
-        elif filename.endswith(".epub"):
-            text, toc = extract_epub(raw)
-            format_ = "epub"
-        elif filename.endswith(".txt"):
-            text, toc = raw.decode("utf-8", errors="replace"), None
-            format_ = "txt"
-        else:
-            raise HTTPException(status_code=415, detail="Formato não suportado — use PDF, EPUB ou TXT.")
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raw = await file.read(MAX_FILE_BYTES + 1)
+        if len(raw) > MAX_FILE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Arquivo muito grande (máx. {MAX_FILE_BYTES // (1024 * 1024)}MB).",
+            )
 
-    doc_title = title.strip() or (file.filename or "Untitled").rsplit(".", 1)[0]
+        original_name = file.filename or ""
+        try:
+            format_ = validate_upload(original_name, file.content_type, raw)
+            if format_ == "pdf":
+                text, toc = extract_pdf(raw)
+            elif format_ == "epub":
+                text, toc = extract_epub(raw)
+            else:
+                text, toc = raw.decode("utf-8", errors="replace"), None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    conn = get_connection()
-    try:
-        row = _create_document(conn, user, doc_title, text, toc, format_, "upload", visibility)
+        doc_title = title.strip() or original_name.rsplit(".", 1)[0]
+        conn = get_connection()
+        try:
+            row = _create_document(
+                conn,
+                user,
+                doc_title,
+                text,
+                toc,
+                format_,
+                "upload",
+                visibility,
+            )
+        finally:
+            conn.close()
+        return row
     finally:
-        conn.close()
-    return row
-
+        await file.close()
 
 @router.post("/documents/url", response_model=DocumentDetail)
 def import_from_url(payload: UrlImportRequest, user: dict = Depends(get_current_user)):

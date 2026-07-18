@@ -1,16 +1,21 @@
 from typing import Literal
 
-from pydantic import BaseModel
-
-class DocumentCreate(BaseModel):
-    title: str
-    raw_text: str
-    visibility: str = "house"
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class DocumentUpdate(BaseModel):
-    title: str | None = None
-    collection: str | None = None
+class StrictRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class DocumentCreate(StrictRequest):
+    title: str = Field(max_length=200)
+    raw_text: str = Field(max_length=500_000)
+    visibility: Literal["house", "private"] = "house"
+
+
+class DocumentUpdate(StrictRequest):
+    title: str | None = Field(default=None, max_length=200)
+    collection: str | None = Field(default=None, max_length=100)
 
 
 class DocumentSummary(BaseModel):
@@ -37,20 +42,20 @@ class DocumentDetail(DocumentSummary):
     toc: list[TocEntry] | None = None
 
 
-class UrlImportRequest(BaseModel):
-    url: str
-    title: str = ""
-    visibility: str = "house"
+class UrlImportRequest(StrictRequest):
+    url: str = Field(min_length=1, max_length=2048)
+    title: str = Field(default="", max_length=200)
+    visibility: Literal["house", "private"] = "house"
 
 
-class UserCreate(BaseModel):
-    name: str
-    password: str
+class UserCreate(StrictRequest):
+    name: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=8, max_length=256)
 
 
-class LoginRequest(BaseModel):
-    name: str
-    password: str
+class LoginRequest(StrictRequest):
+    name: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class UserPublic(BaseModel):
@@ -80,19 +85,19 @@ class UserSettingsOut(BaseModel):
     skin: Literal["library", "odysseus"]
 
 
-class UserSettingsUpdate(BaseModel):
+class UserSettingsUpdate(StrictRequest):
     skin: Literal["library", "odysseus"] | None = None
-    active_mode: str | None = None
-    wpm_focus: int | None = None
-    wpm_flow: int | None = None
-    chunk_focus: int | None = None
-    chunk_flow: int | None = None
-    font_focus: int | None = None
-    font_flow: int | None = None
+    active_mode: Literal["focus", "flow"] | None = None
+    wpm_focus: int | None = Field(default=None, ge=100, le=1000)
+    wpm_flow: int | None = Field(default=None, ge=100, le=1000)
+    chunk_focus: int | None = Field(default=None, ge=1, le=4)
+    chunk_flow: int | None = Field(default=None, ge=1, le=4)
+    font_focus: int | None = Field(default=None, ge=24, le=96)
+    font_flow: int | None = Field(default=None, ge=24, le=96)
     orp_enabled: bool | None = None
     nav_snap_back_on_click: bool | None = None
     nav_pause_on_switch: bool | None = None
-    theme: str | None = None
+    theme: Literal["light", "dark"] | None = None
     collect_stats: bool | None = None
 
 
@@ -103,26 +108,26 @@ class ProgressOut(BaseModel):
     updated_at: str
 
 
-class ProgressUpdate(BaseModel):
-    position: int | None = None
-    status: str | None = None
+class ProgressUpdate(StrictRequest):
+    position: int | None = Field(default=None, ge=0)
+    status: Literal["quero_ler", "lendo", "lido", "abandonado"] | None = None
 
 
-class SessionCreate(BaseModel):
-    document_id: int
-    mode: str
-    start_pointer: int = 0
+class SessionCreate(StrictRequest):
+    document_id: int = Field(gt=0)
+    mode: Literal["focus", "flow"]
+    start_pointer: int = Field(default=0, ge=0)
 
 
 class SessionOut(BaseModel):
     session_id: int | None
 
 
-class SessionUpdate(BaseModel):
-    end_pointer: int
-    position: int
+class SessionUpdate(StrictRequest):
+    end_pointer: int = Field(ge=0)
+    position: int = Field(ge=0)
     ended_at: bool = False
-    avg_wpm: float | None = None
+    avg_wpm: float | None = Field(default=None, ge=0, le=5000)
 
 
 class StatsSummary(BaseModel):
@@ -172,9 +177,9 @@ class StatsDashboard(BaseModel):
     documents: list[StatsDocumentBreakdown]
 
 
-class TtsBlockRequest(BaseModel):
-    token: int = 0
-    voice: str | None = None
+class TtsBlockRequest(StrictRequest):
+    token: int = Field(default=0, ge=0)
+    voice: str | None = Field(default=None, max_length=80)
 
 
 class TtsWordTimestamp(BaseModel):

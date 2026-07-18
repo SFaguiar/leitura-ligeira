@@ -214,13 +214,40 @@ criada em PowerShell administrativo:
 New-NetFirewallRule -DisplayName "Leitura Ligeira" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -Profile Private
 ```
 
+## Hardening de segurança
+
+A R6 adiciona sessão revogável no servidor, proteção CSRF, limitação de login,
+validação estrita de Host e payloads, CSP/headers defensivos, logs de segurança
+e importações endurecidas contra arquivos hostis e SSRF. A documentação do
+modelo de ameaça e o mapeamento OWASP Top 10:2025 estão em
+[SECURITY.md](SECURITY.md).
+
+A primeira abertura após atualizar para a R6 pode pedir login novamente: o
+cookie antigo não possui o token server-side exigido agora. Novas senhas têm
+entre 8 e 256 caracteres; hashes PBKDF2 antigos são atualizados automaticamente
+no próximo login válido.
+
+Eventos relevantes são gravados em `data/logs/security.log`, com rotação e sem
+senhas/cookies. Para aceitar um hostname adicional:
+
+```powershell
+$env:LEITURA_ALLOWED_HOSTS = 'leitor.casa'
+```
+
+O Docker mantém a porta da aplicação em loopback e roda sem root, capabilities
+ou escrita fora de `/app/data` e `/tmp`. Exposição deliberada pelo Compose:
+
+```powershell
+$env:LEITURA_BIND_ADDRESS = '0.0.0.0'
+docker compose up -d
+```
 ## Limitações conhecidas
 
 - **HTTP continua disponível para LAN confiável.** As demais proteções da
   aplicação não cifram o tráfego; use o HTTPS opcional para redes
   compartilhadas ou quando quiser proteger senha, cookie e documentos.
-- **Login sem exigência de senha complexa:** é ambiente doméstico, cada um
-  escolhe a própria senha. Ela continua armazenada com hash forte.
+- **Senha sem regras de composição:** novas senhas exigem 8–256 caracteres,
+  mas não impõem símbolos; são armazenadas com PBKDF2 e salt individual.
 - Hostname amigável via mDNS (`reader.local`) está planejado, mas o suporte
   no Android é inconsistente — o caminho garantido é o IP fixo do PC.
 - Lista completa de limitações aceitas (e o porquê de cada uma) no

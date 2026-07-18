@@ -2,18 +2,26 @@ services:
   app:
     build: .
     ports:
-      - "8000:8000"
+      - "${LEITURA_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     environment:
       KOKORO_URL: http://tts:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-pf_dora}
       LEITURA_SSL_CERTFILE: ${LEITURA_SSL_CERTFILE:-}
       LEITURA_SSL_KEYFILE: ${LEITURA_SSL_KEYFILE:-}
+      LEITURA_ALLOWED_HOSTS: ${LEITURA_ALLOWED_HOSTS:-}
     depends_on:
       tts:
         condition: service_healthy
     volumes:
       - ./data:/app/data
       - ./certs:/app/certs:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
   tts:
