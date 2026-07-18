@@ -14,6 +14,8 @@ data/tts/
 # Env / secrets
 .env
 data/secret_key
+certs/*
+!certs/README.md
 
 # OS
 .DS_Store

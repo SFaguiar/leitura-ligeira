@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     nav_snap_back_on_click INTEGER NOT NULL DEFAULT 0,
     nav_pause_on_switch INTEGER NOT NULL DEFAULT 0,
     theme TEXT NOT NULL DEFAULT 'light',
+    skin TEXT NOT NULL DEFAULT 'library',
     collect_stats INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -97,6 +98,10 @@ MIGRATIONS = [
 ]
 
 
+USER_SETTINGS_MIGRATIONS = [
+    ("skin", "ALTER TABLE user_settings ADD COLUMN skin TEXT NOT NULL DEFAULT 'library'"),
+]
+
 def get_connection() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
@@ -125,6 +130,12 @@ def init_db() -> None:
         )
         for column_name, migration_sql in MIGRATIONS:
             if column_name not in columns:
+                conn.execute(migration_sql)
+        settings_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(user_settings)")
+        }
+        for column_name, migration_sql in USER_SETTINGS_MIGRATIONS:
+            if column_name not in settings_columns:
                 conn.execute(migration_sql)
         # Backfill old space-separated timestamps ("YYYY-MM-DD HH:MM:SS") to
         # ISO 8601 with a Z suffix, so `new Date(...)` parses reliably on

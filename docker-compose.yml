@@ -6,11 +6,14 @@ services:
     environment:
       KOKORO_URL: http://tts:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-pf_dora}
+      LEITURA_SSL_CERTFILE: ${LEITURA_SSL_CERTFILE:-}
+      LEITURA_SSL_KEYFILE: ${LEITURA_SSL_KEYFILE:-}
     depends_on:
       tts:
         condition: service_healthy
     volumes:
       - ./data:/app/data
+      - ./certs:/app/certs:ro
     restart: unless-stopped
 
   tts:

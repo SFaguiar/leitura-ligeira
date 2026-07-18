@@ -1,5 +1,6 @@
-from pydantic import BaseModel
+from typing import Literal
 
+from pydantic import BaseModel
 
 class DocumentCreate(BaseModel):
     title: str
@@ -76,9 +77,11 @@ class UserSettingsOut(BaseModel):
     nav_pause_on_switch: bool
     theme: str
     collect_stats: bool
+    skin: Literal["library", "odysseus"]
 
 
 class UserSettingsUpdate(BaseModel):
+    skin: Literal["library", "odysseus"] | None = None
     active_mode: str | None = None
     wpm_focus: int | None = None
     wpm_flow: int | None = None

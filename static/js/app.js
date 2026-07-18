@@ -97,6 +97,8 @@ const navSnapBackToggle = document.getElementById("nav-snap-back-toggle");
 const navPauseSwitchToggle = document.getElementById("nav-pause-switch-toggle");
 
 const themeToggle = document.getElementById("theme-toggle");
+const skinSelect = document.getElementById("skin-select");
+const transportWarning = document.getElementById("transport-warning");
 
 const currentUserName = document.getElementById("current-user-name");
 const logoutBtn = document.getElementById("logout-btn");
@@ -118,6 +120,24 @@ const newProfilePasswordInput = document.getElementById("new-profile-password");
 const newProfileError = document.getElementById("new-profile-error");
 const newProfileCancelBtn = document.getElementById("new-profile-cancel-btn");
 const newProfileSubmitBtn = document.getElementById("new-profile-submit-btn");
+
+// ---- Transport security ----
+async function applyTransportStatus() {
+    const isHttps = window.location.protocol === "https:";
+    document.documentElement.setAttribute("data-transport", isHttps ? "https" : "http");
+    transportWarning.hidden = isHttps;
+    if (isHttps) return;
+    try {
+        const response = await fetch("/system/transport");
+        if (!response.ok) return;
+        const status = await response.json();
+        transportWarning.dataset.lanEnabled = status.lan_enabled ? "true" : "false";
+    } catch {
+        // The browser protocol remains the authoritative safe fallback.
+    }
+}
+
+applyTransportStatus();
 
 const abandonedModal = document.getElementById("abandoned-modal");
 const abandonedModalTitle = document.getElementById("abandoned-modal-title");
@@ -145,6 +165,7 @@ const editDocSaveBtn = document.getElementById("edit-doc-save-btn");
 const SETTINGS_PREFIX = "settings.";
 const SETTINGS_TYPES = {
     theme: "string",
+    skin: "string",
     activeMode: "string",
     wpmFocus: "number",
     wpmFlow: "number",
@@ -162,6 +183,7 @@ const SETTINGS_TYPES = {
 };
 const SETTINGS_DEFAULTS = {
     theme: "light",
+    skin: "library",
     activeMode: "focus",
     wpmFocus: 300,
     chunkFocus: 1,
@@ -182,6 +204,7 @@ const SETTINGS_DEFAULTS = {
 // source of truth.
 const SETTINGS_SERVER_KEYS = {
     theme: "theme",
+    skin: "skin",
     activeMode: "active_mode",
     wpmFocus: "wpm_focus",
     wpmFlow: "wpm_flow",
@@ -258,11 +281,22 @@ function applyServerSettings(s) {
     localStorage.setItem(SETTINGS_PREFIX + "navSnapBackOnClick", s.nav_snap_back_on_click ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "navPauseOnSwitch", s.nav_pause_on_switch ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "collectStats", s.collect_stats ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "skin", s.skin);
 }
 
 function modeKey(base) {
     return `${base}${activeMode === "focus" ? "Focus" : "Flow"}`;
 }
+
+function applySkin(skin) {
+    const normalized = skin === "odysseus" ? "odysseus" : "library";
+    document.documentElement.setAttribute("data-skin", normalized);
+    skinSelect.value = normalized;
+    setSetting("skin", normalized);
+}
+
+applySkin(getSetting("skin"));
+skinSelect.addEventListener("change", () => applySkin(skinSelect.value));
 
 // ---- Theme ----
 function applyTheme(theme) {
@@ -359,6 +393,7 @@ async function afterLogin() {
         // Offline mirror already has whatever was there before — carry on.
     }
     applyTheme(getSetting("theme"));
+    applySkin(getSetting("skin"));
     // Voice discovery is best-effort and may wait on the local Kokoro service;
     // it must never hold the library hostage during login.
     loadTtsVoices();

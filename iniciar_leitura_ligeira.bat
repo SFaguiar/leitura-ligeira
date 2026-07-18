@@ -39,16 +39,12 @@ set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONPATH=%CD%"
 
-echo Iniciando Leitura Ligeira em http://localhost:8000
-echo Para encerrar, pressione Ctrl+C nesta janela.
-echo.
-
-".venv\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+".venv\Scripts\python.exe" scripts\run_server.py %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
     echo.
-    echo [ERRO] Uvicorn terminou com codigo %EXIT_CODE%.
+    echo [ERRO] Inicializador terminou com codigo %EXIT_CODE%.
     pause
 )
 

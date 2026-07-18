@@ -16,11 +16,23 @@
         </div>
     </div>
     <div class="topbar-actions">
+        <label class="skin-picker" title="Escolher aparencia">
+            <span class="sr-only">Aparencia</span>
+            <select id="skin-select" aria-label="Aparencia">
+                <option value="library">Biblioteca</option>
+                <option value="odysseus">Odysseus</option>
+            </select>
+        </label>
         <span id="current-user-name" class="current-user-name" hidden></span>
         <button id="logout-btn" class="btn" title="Sair" hidden>Sair</button>
         <button id="theme-toggle" class="icon-btn" title="Alternar tema">🌙</button>
     </div>
 </header>
+
+<div id="transport-warning" class="transport-warning" role="status" aria-live="polite" hidden>
+    <span class="transport-warning-icon" aria-hidden="true">!</span>
+    <span><strong>Conexão HTTP local.</strong> Use o acesso pela rede somente em um Wi-Fi doméstico confiável.</span>
+</div>
 
 <main id="login-view" class="view">
     <div class="welcome-copy">

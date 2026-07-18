@@ -10,7 +10,7 @@ Backend em Python/FastAPI, frontend em JS puro (sem build step), SQLite como
 banco. Veja o [ROADMAP.md](ROADMAP.md) para arquitetura, fases, decisões de
 design registradas e as questões em aberto.
 
-## Status (2026-07-12): Fases 1–2 concluídas
+## Status (2026-07-18): missão Release 1.0
 
 O que funciona hoje:
 
@@ -41,14 +41,35 @@ velocidade antes da Fase 1.6 (quando era nominal), recalibre.
 
 ## Rodando localmente (sem Docker)
 
-```bash
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```powershell
+py -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+iniciar_leitura_ligeira.bat
 ```
 
-Abra `http://localhost:8000` no PC, ou `http://<IP-do-PC-na-rede>:8000` no
-celular (mesma rede Wi-Fi). Descubra o IP com `ipconfig` (Windows) /
-`ip addr` (Linux).
+O modo padrão abre somente em `http://127.0.0.1:8000`; outros aparelhos não
+conseguem acessar. Para expor explicitamente na rede doméstica:
+
+```powershell
+iniciar_leitura_ligeira.bat --lan
+```
+
+O inicializador mostra o endereço da rede. Descubra o IP manualmente com
+`ipconfig` se necessário. HTTP não cifra senha, cookie ou documentos em
+trânsito: use `--lan` somente em Wi-Fi doméstico confiável, nunca em rede
+pública, e não encaminhe a porta no roteador.
+
+O runner também pode ser chamado diretamente:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_server.py --help
+```
+
+Ele rejeita `0.0.0.0` sem `--lan`, desativa confiança em proxy headers e
+valida todo par de certificado/chave antes de abrir a porta.
+Se a porta já contiver uma instância compatível do Leitura Ligeira, o runner
+informa a URL e encerra sem erro. Para outro programa ou modo de transporte,
+ele explica o conflito antes do Uvicorn; escolha outra porta com --port 8001.
 
 ### Narrador local (Kokoro)
 
@@ -73,18 +94,61 @@ como `http://tts:8880` automaticamente.
 docker compose up --build
 ```
 
-O banco fica em `./data/app.db` (montado como volume) — fazer backup é copiar
-um arquivo.
+O banco fica em `./data/app.db` (montado como volume). O Compose expõe a
+aplicação à LAN deliberadamente e monta `./certs` como somente leitura.
+
+## HTTPS local opcional
+
+HTTPS não é obrigatório para uso no próprio PC ou numa LAN doméstica
+estritamente confiável. Quando certificado e chave são configurados, o mesmo
+inicializador ativa TLS e marca o cookie de sessão como `Secure`.
+
+Instale o mkcert no Windows e crie a autoridade local:
+
+```powershell
+winget install FiloSottile.mkcert
+mkcert -install
+```
+
+Gere um certificado incluindo todos os nomes realmente usados para acessar o
+servidor. Substitua `192.168.1.50` pelo IP do computador:
+
+```powershell
+New-Item -ItemType Directory -Force certs
+mkcert -cert-file certs\leitura-ligeira.pem -key-file certs\leitura-ligeira-key.pem localhost 127.0.0.1 ::1 192.168.1.50 reader.local
+iniciar_leitura_ligeira.bat --lan
+```
+
+Os nomes padrão acima são detectados automaticamente. Para outro par:
+
+```powershell
+iniciar_leitura_ligeira.bat --lan --certfile C:\certs\server.pem --keyfile C:\certs\server-key.pem
+```
+
+Para forçar HTTP mesmo quando os arquivos padrão existirem, use
+`iniciar_leitura_ligeira.bat --no-https`.
+
+Cada celular precisa confiar na CA do mkcert para remover o alerta do
+navegador. Android exige instalar a CA nas configurações de segurança; iOS
+exige instalar o perfil e ativar "Confiança Total" em
+`Ajustes > Geral > Sobre > Ajustes de Confiança do Certificado`. Não copie a
+chave privada para o celular.
+
+O programa não cria regra de firewall automaticamente. Se o Windows pedir
+permissão, autorize somente para redes privadas. Uma regra explícita pode ser
+criada em PowerShell administrativo:
+
+```powershell
+New-NetFirewallRule -DisplayName "Leitura Ligeira" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -Profile Private
+```
 
 ## Limitações conhecidas
 
-- **Sem HTTPS por enquanto.** HTTP puro na LAN; certificado local (mkcert) e
-  PWA offline vêm numa fase futura. Sem contexto seguro, o Android não
-  oferece o banner completo de "instalar app", mas tudo funciona na aba do
-  navegador.
-- **Login sem exigência de senha complexa** (quando as contas chegarem): é
-  ambiente doméstico, cada um escolhe a própria senha. A senha ainda trafega
-  em HTTP puro até a fase de HTTPS — aceitável numa LAN de confiança.
+- **HTTP continua disponível para LAN confiável.** As demais proteções da
+  aplicação não cifram o tráfego; use o HTTPS opcional para redes
+  compartilhadas ou quando quiser proteger senha, cookie e documentos.
+- **Login sem exigência de senha complexa:** é ambiente doméstico, cada um
+  escolhe a própria senha. Ela continua armazenada com hash forte.
 - Hostname amigável via mDNS (`reader.local`) está planejado, mas o suporte
   no Android é inconsistente — o caminho garantido é o IP fixo do PC.
 - Lista completa de limitações aceitas (e o porquê de cada uma) no

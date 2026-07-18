@@ -66,7 +66,8 @@ O que funciona hoje, testado em uso real:
 - **Frontend:** JS puro + HTML/CSS, sem build step — o loop de timing do RSVP
   e o estado do player não precisam de framework, e pipeline de build é custo
   sem retorno nessa escala.
-- **Deploy:** Docker Compose; LAN apenas; HTTP puro (HTTPS na fase de PWA).
+- **Deploy:** Docker Compose; LAN apenas; HTTP disponível para rede doméstica
+  confiável e HTTPS opcional promovido para o gate R1 da release.
 - Config do leitor em `localStorage` (por navegador).
 
 ### Alvo (com o pivô multiusuário)
@@ -81,9 +82,9 @@ O que funciona hoje, testado em uso real:
   vez em `data/secret_key` (gitignored); cookie longevo (semanas) pro celular.
   **Auto-registro aberto na LAN** (qualquer um cria o próprio perfil; o
   primeiro vira admin). **Tela de login = seletor de perfil + senha
-  (estilo Netflix).** **Tensão aceita:** a senha trafega em HTTP puro até a
-  Fase 11 (HTTPS) — ok numa LAN de confiança doméstica; revisitar se a rede
-  deixar de ser só isso.
+  (estilo Netflix).** **Tensão aceita:** HTTP permanece disponível para LAN
+  doméstica confiável; HTTPS opcional e avisos de transporte entram no gate R1
+  da Missão Release 1.0.
 - **Papéis:** `users.role` (`admin` | `member`). O primeiro perfil criado no
   sistema vira `admin` automaticamente (convenção comum de bootstrap em apps
   self-hosted — proposta do agente, sem objeção esperada). Admin tem direitos
@@ -291,7 +292,8 @@ GET        /documents/{id}/audio/{voice} # stream do áudio
   o documento dela (vazamento) → escopar o dedupe ao próprio dono; (b) a
   unicidade de título é global → duas pessoas não teriam "Capítulo 1" sem
   sufixo esquisito → escopar ao dono (ou largar).
-- **Decisões do usuário:** HTTP puro aceito por ora (HTTPS fica na Fase 11);
+- **Decisões do usuário:** HTTP puro aceito inicialmente; em 2026-07-16 o
+  HTTPS opcional foi promovido da Fase 11 para o gate R1 da release;
   **auto-registro aberto** na LAN (1º usuário vira admin); tela de login =
   **seletor de perfil + senha (estilo Netflix)**; **`document_permissions`
   adiado** (Fase 4 sai só com dono + admin — YAGNI, menos superfície).
@@ -519,7 +521,8 @@ persistência confirmada após reload completo. Nenhum código commitado ainda
 
 **Fora do escopo (YAGNI — limitações aceitas, documentadas):** painel de
 admin, reset de senha por UI (admin recria/redefine no banco se preciso),
-rate-limiting/lockout de login. Senha em HTTP puro até a Fase 11.
+rate-limiting/lockout de login. O hardening de login e o HTTPS opcional foram
+promovidos para R6 e R1 da Missão Release 1.0, respectivamente.
 
 **Implementado e testado ao vivo no navegador** (2026-07-12): backend
 verificado extensivamente via curl (registro/login/logout, cookie de sessão,
@@ -1111,17 +1114,125 @@ histórico o dashboard terá no lançamento).*
 - Validação: 10 testes `unittest`, harness TTS, `compileall`,
   `node --check` e `git diff --check`.
 
+### MISSÃO RELEASE 1.0 — prioridade absoluta
+
+> **Congelamento funcional:** a partir desta decisão, nenhuma nova feature das
+> Fases 10–28 entra antes da release. Correções de regressão, segurança,
+> confiabilidade, acessibilidade essencial e documentação continuam permitidas.
+
+A release será conduzida pelos gates abaixo, nesta ordem. Um gate só avança
+depois de implementação completa, testes proporcionais ao risco e registro no
+diário.
+
+#### [x] R1 — Segurança de transporte e implantação local *(encerrado em 2026-07-18)*
+- HTTPS **opcional**, ativado quando certificado e chave forem configurados;
+  HTTP continua sendo o modo simples para LAN doméstica confiável.
+- Inicialização padrão em 127.0.0.1; exposição em 0.0.0.0 deve ser uma
+  escolha explícita para acesso pela rede local.
+- Cookies Secure somente sob HTTPS; HttpOnly e SameSite nos dois modos.
+- Aviso visível e diagnóstico quando a aplicação estiver em HTTP.
+- Documentar mkcert, instalação opcional da CA e regra de firewall restrita ao
+  perfil de rede privada. O software não abre portas no roteador.
+**Implementado em 2026-07-18:**
+- `scripts/run_server.py` centraliza o bind e o TLS: loopback por padrão,
+  qualquer host de rede exige `--lan`, proxy headers ficam desligados e o par
+  PEM é validado antes da abertura da porta.
+- O runner identifica uma instância compatível já ativa e trata ocupação por
+  outro serviço ou modo com mensagem acionável antes de iniciar o Uvicorn.
+- Certificados padrão em `certs/` ativam HTTPS automaticamente; pares
+  customizados e `--no-https` também são suportados no runner nativo e no
+  Compose.
+- `SessionMiddleware` recebe `https_only` conforme o transporte oficial;
+  testes confirmam `Secure`, `HttpOnly` e `SameSite=Lax` em HTTPS.
+- Banner acessível alerta todo acesso HTTP. `/system/transport` informa scheme,
+  cookie e LAN; headers defensivos básicos acompanham todas as respostas.
+- HTTPS real validado com certificado temporário em
+  `https://127.0.0.1:8443`; desktop e 390x844 validados sem overflow ou erros
+  de console. Documentação inclui mkcert, confiança móvel e firewall privado.
+
+#### [ ] R2 — Backup e restauração mínimos
+- Backup versionado de banco, documentos e configuração necessária.
+- Scripts PowerShell/Batch de backup e restauração, com validação de caminhos,
+  arquivo íntegro e prevenção de sobrescrita acidental.
+- Restaurar o backup em uma pasta limpa e executar PRAGMA integrity_check.
+- A interface completa de exportação portátil permanece na Fase 14.
+
+#### [ ] R3 — Congelamento e reprodução do ambiente
+- Fixar versões Python e de todas as dependências.
+- Fixar a imagem do Kokoro por versão/digest; eliminar dependência de latest.
+- Documentar versões mínimas de Python, Docker, Ollama e modelo recomendado.
+- Endurecer o inicializador para detectar dependências, iniciar somente o que
+  estiver parado e apresentar erros acionáveis.
+- Validar instalação limpa em outra pasta ou máquina.
+
+#### [ ] R4 — Migrações e integridade do SQLite
+- Testar banco vazio, banco legado e execução repetida de init_db().
+- Fazer backup antes de migrações e documentar restauração como rollback.
+- Executar PRAGMA integrity_check; revisar constraints e índices.
+- Garantir try/finally e conn.close() em toda conexão aberta.
+
+#### [ ] R5 — Degradação segura das dependências locais
+- Biblioteca e leitor permanecem utilizáveis sem Docker, Kokoro, Ollama ou
+  internet.
+- TTS e futuras integrações mostram estado indisponível sem derrubar a página.
+- Timeouts, cancelamentos, limites de concorrência e mensagens recuperáveis.
+- Criar diagnóstico consolidado de aplicação, banco, Kokoro, Ollama, HTTPS e
+  versão instalada.
+
+#### [ ] R6 — Hardening de segurança da aplicação
+- Revisar sessão, CSRF, CSP, CORS, hosts permitidos e rotação no login.
+- Limitar tentativas de login sem comprometer o uso doméstico.
+- Validar tamanho, tipo e nome de uploads; impedir path traversal.
+- Blindar importação por URL contra SSRF, redirecionamentos perigosos e
+  respostas excessivas.
+- Confirmar que logs e respostas nunca vazam senhas, cookies ou stack traces.
+
+#### [ ] R7 — Release gate automatizado e regressão real
+- Cobrir autenticação, importações, biblioteca, progresso, prateleiras,
+  abandonados, Foco, Fluxo, TTS 4x, skins, dashboard e opt-out.
+- Testar troca de documentos, logout e reinício do servidor durante leitura.
+- Executar teste prolongado de TTS/sincronização em alta velocidade.
+- Um único comando deve rodar testes Python, harnesses JS, verificações
+  estáticas e integridade do banco.
+
+#### [ ] R8 — Polimento essencial de produto
+- Onboarding curto, estados vazios, carregamentos e erros acionáveis.
+- Tela Sistema/Diagnóstico com versão e saúde dos serviços.
+- Overlay de atalhos Shift+?, favicon, ícones, título e manifest básicos.
+- Auditoria de teclado, foco, contraste das duas skins, zoom 200%, alvos de
+  toque, aria-live e prefers-reduced-motion.
+- Documentação de instalação, atualização, backup, restauração e solução de
+  problemas.
+
+#### [ ] R9 — Release candidate e publicação
+- Gerar 1.0.0-rc1, com changelog e procedimento de rollback.
+- Usar por alguns dias em pelo menos dois dispositivos; durante o soak entram
+  apenas correções de regressão.
+- Repetir todos os gates, criar tag v1.0.0 e publicar os artefatos.
+
+**Critério de saída:** HTTPS opcional funcional, backup restaurado de verdade,
+ambiente reproduzível, migrações seguras, dependências degradando sem queda,
+hardening revisado, suíte de release verde e RC validada em dois dispositivos.
+
+### Backlog de produto pós-release
+
+As Fases 10–28 permanecem planejadas, mas estão congeladas até a conclusão de
+R1–R9. A numeração histórica foi preservada para não quebrar referências.
+A parte de HTTPS da Fase 11 foi promovida para R1; a PWA offline continua
+pós-release. O backup mínimo foi promovido para R2; a exportação portátil
+completa continua na Fase 14.
+
 #### [ ] Fase 10 — Teste de velocidade/compreensão embutido
 *Depende de: Fase 5 (grava resultado como dado de desempenho).*
 - WPM real medido + perguntas simples de compreensão no próprio leitor (o
   SwiftRead só tem isso no site). Reverte o non-goal original.
 
-#### [ ] Fase 11 — HTTPS local + PWA offline real
+#### [ ] Fase 11 — PWA offline real
 *Depende de: nada; melhor após o grosso das features para cachear a versão
 estável.*
-- mkcert para contexto seguro; service worker (cache de assets, offline,
-  "adicionar à tela inicial" completo). Revisar o `Cache-Control: no-store`
-  de desenvolvimento. Reverte o "só HTTP puro" original.
+- O HTTPS opcional foi promovido para R1 e bloqueia a release. Esta fase fica
+  somente com service worker, cache offline e "adicionar à tela inicial"
+  completo. Revisar o `Cache-Control: no-store` de desenvolvimento.
 
 #### [ ] Fase 12 — Polish
 - Overlay de atalhos (Shift+?), refinamento de tema/contraste, web manifest
@@ -1131,7 +1242,9 @@ estável.*
   biblioteca em CSS puro (papel, madeira, verde e latão), componentes
   responsivos, temas claro/escuro, estados de foco consistentes e perfis
   acessíveis por teclado. Permanecem pendentes overlay de atalhos, manifest e
-  descoberta mDNS; por isso a Fase 12 continua aberta.
+  descoberta mDNS. A skin alternativa Odysseus (grafite, coral e ciano) esta
+  concluida, selecionavel e persistida por perfil sem dependencias externas.
+  Os itens restantes mantem a Fase 12 aberta.
 
 #### [ ] Fase 13 — Administração de contas (self-service) — **NÃO PLANEJADA, precisa deliberação**
 *Depende de: uso real acumulado das Fases 4-9 (padrões de conta, permissão e
@@ -1152,6 +1265,56 @@ rudimentar de contas, arrisca retrabalho).*
   rudimentar (mais gente usando de verdade, primeiros pedidos reais de
   "esqueci minha senha" fora do controle do admin).
 
+#### [ ] Fase 14 — Exportação e Backup Portátil (Soberania de Dados)
+- Exportação em um clique de um arquivo `.zip` com os documentos originais ePUB/PDF/TXT do perfil logado e um arquivo JSON estruturado com o progresso de leitura, sessões e configurações.
+- Importação correspondente para restauração rápida em qualquer outra instância do Leitura Ligeira.
+
+#### [ ] Fase 15 — Acessibilidade: Leitura Biônica e OpenDyslexic
+- Opção de visualização "Leitura Biônica" no modo Fluxo (iniciais das palavras em negrito).
+- Integração local da fonte open-source OpenDyslexic nas opções de estilo.
+
+#### [ ] Fase 16 — O Mural da Casa (Recomendações e Notas Compartilhadas)
+- Painel comum na biblioteca de recomendações locais entre membros da mesma casa.
+- Possibilidade de ver comentários/notas deixadas por outros perfis em documentos marcados como públicos/casa.
+
+#### [ ] Fase 17 — Estimativas Dinâmicas de Tempo Restante
+- Biblioteca calcula e exibe estimativa de tempo restante baseando-se no WPM médio real do usuário nas últimas sessões do mesmo livro.
+
+#### [ ] Fase 18 — Timeboxing / Pomodoro Integrado
+- Cronômetro no leitor para limitar sessões (15, 20, 25 min) com pausa automática e sinal sonoro nativo.
+
+#### [ ] Fase 19 — Dicionário Offline Local
+- Exibição de definições semânticas de palavras com dois cliques, puxando de banco de dados offline local sem requisições externas.
+
+#### [ ] Fase 20 — Perfil Convidado Rápido (Somente Leitura)
+- Acesso sem senha de um clique para convidados na rede local Wi-Fi.
+- O progresso de leitura é efêmero (salvo no cache/sessionStorage do navegador local).
+- **Restrição de Acesso:** Convidados têm privilégios estritos de somente leitura (read-only) — eles podem ver a biblioteca de documentos públicos da casa e ler, mas são impedidos de fazer upload de arquivos/URLs ou de excluir documentos.
+
+#### [ ] Fase 21 — Régua de Leitura Visual (Modo Fluxo)
+- Régua de foco visual que destaca o parágrafo/bloco ativo e desfoca ou escurece ligeiramente o texto fora da palavra ativa no Modo Fluxo.
+
+#### [ ] Fase 22 — Modo Sono Extremo (OLED Black + Filtro Vermelho)
+- Tema de contraste absoluto (fundo preto absoluto #000) e filtro vermelho de software via overlay CSS para leitura no escuro de cabeceira.
+
+#### [ ] Fase 23 — Modo Zen (Leitura Livre de Distrações)
+- Toggle de visualização que oculta toda a interface de controles, barras de progresso e botões, restando apenas o texto e o fundo da tela.
+
+#### [ ] Fase 24 — Prateleiras Dinâmicas por Tempo de Leitura
+- Agrupamento automático na biblioteca por duração estimada de leitura (ex: "Tempo de Café" < 10min, "Leitura Média" 10-30min, "Leitura Profunda" > 30min).
+
+#### [ ] Fase 25 — Miras Auxiliares ORP (Guias Oculares RSVP)
+- Adição opcional de marcas de mira visual finas alinhadas ao caractere vermelho (ORP) para estabilização do olhar em altas velocidades.
+
+#### [ ] Fase 26 — Coleções Hierárquicas (Subpastas via Separador)
+- Suporte a subcoleções usando barras como separador de caminho (ex: `Estudos/História`). A biblioteca renderiza os filtros em árvore com recuo visual e pastas retráteis.
+
+#### [ ] Fase 27 — Agrupamento por Séries e Volumes (Lombadas Inteligentes)
+- Metadados de Série e Volume para juntar sequências de livros sob um único card expansível na biblioteca, organizando volumes cronologicamente.
+
+#### [ ] Fase 28 — Tags de Matiz Colorida (Etiquetas de Prioridade)
+- Criação e associação de tags de texto com cores customizadas para classificação e filtro matricial rápido na biblioteca.
+
 ---
 
 ## Limitações aceitas (não resolver a menos que seja pedido)
@@ -1159,9 +1322,9 @@ rudimentar de contas, arrisca retrabalho).*
 - **Senha sem exigência de complexidade obrigatória** — ambiente doméstico,
   cada um escolhe a própria senha. Ainda é hasheada (pbkdf2) e verificada de
   verdade (não é "sem segurança real").
-- **Senha trafega em HTTP puro até a Fase 11** (HTTPS local) — aceitável numa
-  LAN de confiança doméstica; revisitar (ou adiantar a Fase 11) se a rede
-  deixar de ser só isso.
+- **HTTP continua permitido somente para LAN doméstica confiável** — R1 deve
+  adicionar aviso explícito, HTTPS opcional e configuração segura de cookies
+  antes da release.
 - **Sem rate-limiting/lockout no login e sem reset de senha por UI** — home,
   confiança, baixo risco. Esqueceu a senha? O admin roda
   `scripts/reset_password.py` (CLI oculto, fora da API/UI, acesso direto ao
