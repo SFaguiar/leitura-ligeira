@@ -97,6 +97,33 @@ docker compose up --build
 O banco fica em `./data/app.db` (montado como volume). O Compose expõe a
 aplicação à LAN deliberadamente e monta `./certs` como somente leitura.
 
+## Backup e restauração
+
+O backup pode ser criado com a aplicação em execução. Ele usa o snapshot
+nativo do SQLite, inclui data/app.db e data/secret_key, grava manifesto
+versionado com SHA-256 e valida o banco antes de concluir:
+
+    .\backup_leitura_ligeira.bat
+
+O ZIP fica em backups/ e contém documentos, hashes de senha e a chave de
+sessão: trate-o como arquivo sensível. O cache TTS e certificados locais não
+são incluídos porque podem ser regenerados ou são específicos da máquina.
+
+Para conferir um pacote sem restaurá-lo:
+
+    .venv\Scripts\python.exe scripts\backup_restore.py verify backups\ARQUIVO.zip
+
+A restauração padrão vai para uma pasta limpa, restored-data/, sem tocar na
+biblioteca atual:
+
+    .\restaurar_leitura_ligeira.bat backups\ARQUIVO.zip
+
+Depois de conferir a cópia, encerre o servidor antes de substituir os dados
+reais. A opção explícita abaixo preserva o diretório anterior com o sufixo
+pre-restore, permitindo rollback manual:
+
+    .\restaurar_leitura_ligeira.bat backups\ARQUIVO.zip --target-data-dir data --replace
+
 ## HTTPS local opcional
 
 HTTPS não é obrigatório para uso no próprio PC ou numa LAN doméstica

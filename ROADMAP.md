@@ -1150,12 +1150,23 @@ diário.
   `https://127.0.0.1:8443`; desktop e 390x844 validados sem overflow ou erros
   de console. Documentação inclui mkcert, confiança móvel e firewall privado.
 
-#### [ ] R2 — Backup e restauração mínimos
+#### [x] R2 — Backup e restauração mínimos *(encerrado em 2026-07-18)*
 - Backup versionado de banco, documentos e configuração necessária.
 - Scripts PowerShell/Batch de backup e restauração, com validação de caminhos,
   arquivo íntegro e prevenção de sobrescrita acidental.
 - Restaurar o backup em uma pasta limpa e executar PRAGMA integrity_check.
 - A interface completa de exportação portátil permanece na Fase 14.
+
+**Implementado em 2026-07-18:**
+- Pacote ZIP v1 contém snapshot online do banco, secret_key quando existe,
+  manifesto, tamanhos e SHA-256; cache TTS e certificados ficam excluídos.
+- Verificação rejeita formato incompatível, arquivos extras ou duplicados,
+  corrupção, tamanhos divergentes e banco que falhe no integrity check.
+- Restauração usa staging validado, recusa destino não vazio por padrão e,
+  com --replace, exige um app.db válido e preserva o diretório anterior como
+  rollback.
+- Backup real restaurado em pasta limpa: integrity check ok, 3 documentos,
+  3 usuários e chave de sessão idêntica, sem tocar no banco de produção.
 
 #### [ ] R3 — Congelamento e reprodução do ambiente
 - Fixar versões Python e de todas as dependências.

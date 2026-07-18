@@ -10,6 +10,9 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 data/tts/
+backups/
+restored-data/
+data.pre-restore-*/
 
 # Env / secrets
 .env
