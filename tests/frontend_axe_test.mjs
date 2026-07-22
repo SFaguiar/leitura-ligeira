@@ -147,6 +147,8 @@ let server;
 let chrome;
 let cdp;
 const audits = [];
+const reflowAudits = [];
+const reportDir = path.join(root, "release-reports");
 try {
     server = spawn(
         python,
@@ -207,6 +209,41 @@ try {
     const axeSource = await readFile(axePath, "utf8");
     await evaluate(cdp, axeSource);
     assert.equal(await evaluate(cdp, "typeof axe"), "object", "axe-core did not load in the page");
+    await import("node:fs/promises").then(({ mkdir }) => mkdir(reportDir, { recursive: true }));
+
+    async function setViewport(width, height = 844) {
+        await cdp.call("Emulation.setDeviceMetricsOverride", {
+            width,
+            height,
+            deviceScaleFactor: 1,
+            mobile: width <= 640,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+
+    async function auditReflow(label, skin) {
+        for (const width of [1280, 640, 320]) {
+            await setViewport(width);
+            const geometry = await evaluate(cdp, `(() => ({
+                viewport: window.innerWidth,
+                document_width: document.documentElement.scrollWidth,
+                body_width: document.body.scrollWidth,
+                active_dialog_width: document.querySelector(".modal:not([hidden])")?.scrollWidth || 0
+            }))()`);
+            const noPageOverflow = geometry.document_width <= geometry.viewport && geometry.body_width <= geometry.viewport;
+            reflowAudits.push({ state: label, skin, width, ...geometry, no_page_overflow: noPageOverflow });
+            assert.ok(noPageOverflow, `${label}/${skin} overflowed at ${width} CSS px: ${JSON.stringify(geometry)}`);
+            if (width === 320) {
+                const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
+                const safeLabel = label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+                await writeFile(
+                    path.join(reportDir, `r10-${safeLabel}-${skin}-320.png`),
+                    Buffer.from(screenshot.data, "base64"),
+                );
+            }
+        }
+        await setViewport(1280);
+    }
 
     async function setSkin(skin) {
         await evaluate(
@@ -223,6 +260,7 @@ try {
     async function audit(label) {
         for (const skin of ["library", "odysseus"]) {
             await setSkin(skin);
+            await setViewport(1280);
             const result = await evaluate(
                 cdp,
                 'axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] } }).then((result) => ({ violations: result.violations, incomplete: result.incomplete }))',
@@ -252,10 +290,16 @@ try {
                 unnamed_interactive: unnamedInteractive,
                 ...result,
             });
+            await auditReflow(label, skin);
         }
     }
 
     await audit("login");
+    await evaluate(cdp, 'document.querySelector("#legibility-toggle").click()');
+    await waitForDom(cdp, 'document.documentElement.dataset.legibility === "high"');
+    await audit("login-high-legibility");
+    await evaluate(cdp, 'document.querySelector("#legibility-toggle").click()');
+    await waitForDom(cdp, 'document.documentElement.dataset.legibility === "standard"');
     await evaluate(cdp, 'document.querySelector("#new-profile-btn").click()');
     await waitForDom(cdp, '!document.querySelector("#new-profile-modal").hidden');
     await audit("new-profile-dialog");
@@ -290,6 +334,16 @@ try {
     await evaluate(cdp, 'document.querySelector("#shortcuts-btn").click()');
     await waitForDom(cdp, '!document.querySelector("#shortcuts-modal").hidden');
     await audit("shortcuts-dialog");
+    await cdp.call("Emulation.setEmulatedMedia", {
+        features: [
+            { name: "prefers-reduced-motion", value: "reduce" },
+            { name: "forced-colors", value: "active" },
+        ],
+    });
+    await audit("shortcuts-dialog-forced-colors");
+    await cdp.call("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+    });
 
     const violations = audits.flatMap((auditResult) =>
         auditResult.violations.map((violation) => ({
@@ -334,9 +388,24 @@ try {
         unnamed_interactive: unnamedInteractive,
         violations,
     };
-    const reportDir = path.join(root, "release-reports");
+    const r10Report = {
+        generated_at: new Date().toISOString(),
+        viewport_widths: [1280, 640, 320],
+        zoom_equivalents: [
+            { css_viewport: 1280, equivalent_browser_zoom: "100%" },
+            { css_viewport: 640, equivalent_browser_zoom: "200%" },
+            { css_viewport: 320, equivalent_browser_zoom: "400%" },
+        ],
+        audited_state_skin_pairs: audits.map(({ state, skin }) => ({ state, skin })),
+        reflow_audits: reflowAudits,
+        page_overflow_count: reflowAudits.filter((auditResult) => !auditResult.no_page_overflow).length,
+        screenshots: reflowAudits
+            .filter((auditResult) => auditResult.width === 320)
+            .map(({ state, skin }) => ({ state, skin, file: `r10-${state.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}-${skin}-320.png` })),
+    };
     await import("node:fs/promises").then(({ mkdir }) => mkdir(reportDir, { recursive: true }));
     await writeFile(path.join(reportDir, "r9-axe-latest.json"), JSON.stringify(report, null, 2) + "\n");
+    await writeFile(path.join(reportDir, "r10-reflow-latest.json"), JSON.stringify(r10Report, null, 2) + "\n");
     assert.equal(
         blockers.length,
         0,
@@ -347,12 +416,19 @@ try {
         0,
         "Edge accessibility tree contains unnamed controls; inspect release-reports/r9-axe-latest.json",
     );
+    assert.equal(
+        r10Report.page_overflow_count,
+        0,
+        "R10 reflow audit found page-level overflow; inspect release-reports/r10-reflow-latest.json",
+    );
     console.log(
         "axe-core 4.12.1 + Edge AX tree: OK (" +
             audits.length +
             " rendered state/skin audits, " +
             violations.length +
-            " findings, 0 unnamed controls)",
+            " findings, 0 unnamed controls, " +
+            reflowAudits.length +
+            " reflow checks)",
     );
 } catch (error) {
     if (server?.exitCode !== null && server?.exitCode !== undefined) {

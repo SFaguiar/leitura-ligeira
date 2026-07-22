@@ -1,4 +1,4 @@
-# Matriz de avaliação assistiva — R9
+# Matriz de avaliação assistiva — R9 e R10
 
 Esta matriz segue a separação recomendada entre verificações automáticas e
 avaliação humana. Um resultado automatizado aprovado não substitui a execução
@@ -75,3 +75,42 @@ passos de reprodução e evidência sem dados pessoais.
 O R9 só pode ser marcado como concluído com zero achado crítico/alto e com todas
 as quatro famílias executadas. Achados médios/baixos precisam de correção ou
 aceite explícito e rastreável antes do R14.
+## R10 — visão, cor e mobilidade: matriz humana pendente
+
+O gate automatizado cobre 20 combinações de estado/skin/emulação e mede 60
+situações de reflow em 1280, 640 e 320 CSS px. Ele grava o relatório
+`release-reports/r10-reflow-latest.json` e capturas sanitizadas de 320 px. Essa
+evidência não substitui as verificações abaixo.
+
+| Verificação | Plataforma/equipamento | Estado |
+|---|---|---|
+| Zoom real 100%, 200% e 400% | Edge/Firefox/Chrome em Windows e navegador móvel | Pendente |
+| Alto contraste do sistema / `forced-colors` | Windows 11 | Pendente |
+| Protanopia, deuteranopia, tritanopia e acromatopsia | Simulador confiável e inspeção humana | Pendente |
+| Switch scanning | Windows ou Android com acionador configurado | Pendente |
+| Voice Access / controle por voz | Windows 11 | Pendente |
+| Rastreamento ocular, quando disponível | Equipamento compatível | Pendente |
+
+### Roteiro complementar
+
+1. Executar cada view, diálogo, skin e orientação em 100%, 200% e 400%; confirmar
+   que não há conteúdo cortado, sobreposição de controles nem rolagem horizontal
+   da página. A rolagem interna explícita das abas de prateleira é permitida.
+2. Aplicar espaçamento de texto do usuário (linha 1,5, parágrafo 2×, letra
+   0,12em e palavra 0,16em) e zoom de texto; confirmar leitura e formulários.
+3. Ligar Alto Contraste do Windows e também inversão; confirmar que foco,
+   seleção, erro, progresso e saúde continuam compreensíveis por texto, contorno
+   ou ícone, não apenas por cor.
+4. Revisar os quatro filtros de visão de cor no login, biblioteca, documento
+   abandonado, progresso, erros, TTS e Sistema. Registrar screenshot e qualquer
+   ambiguidade humana.
+5. Executar criação, importação, busca, prateleiras, leitura Foco/Fluxo/TTS,
+   scrubber e logout somente por Tab/Shift+Tab, Enter, Espaço e setas; repetir
+   com switch scanning e Voice Access. O scrubber deve funcionar por setas,
+   Page Up/Down, Home e End sem arrasto.
+6. Quando houver rastreamento ocular, repetir o fluxo essencial, verificar alvos
+   de 48 px e registrar modelo/configuração do equipamento.
+
+O R10 só pode ser marcado como concluído com essas matrizes sem perda funcional
+e com zero achado crítico/alto. A automação atual protege regressões, mas não
+substitui esses aceites humanos.

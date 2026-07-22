@@ -1353,6 +1353,12 @@ tecnologia assistiva; matriz e evidências anexadas ao gate.
 
 #### [ ] R10 — Baixa visão, daltonismo e mobilidade reduzida
 
+**Estado em 2026-07-22:** implementação e regressão automatizada concluídas:
+Alta legibilidade por dispositivo, foco reforçado, alvos de 48 px, `forced-colors`,
+instrução de teclado para o scrubber e 20 combinações renderizadas em Edge. O
+gate permanece aberto para matriz humana de zoom real, alto contraste do sistema,
+simulações de visão de cor, switch scanning, Voice Access e rastreamento ocular.
+
 - Validar reflow a 320 CSS px, equivalente ao cenário de 400% partindo de
   1280 px, em todas as views, modais, skins e estados; nenhuma perda de conteúdo
   ou rolagem horizontal da página.

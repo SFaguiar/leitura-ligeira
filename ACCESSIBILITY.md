@@ -1,6 +1,6 @@
 # Declaração provisória de acessibilidade
 
-Última revisão: 18 de julho de 2026.
+Última revisão: 22 de julho de 2026.
 
 O Leitura Ligeira pretende atender às WCAG 2.2 nos níveis A e AA. Esta é uma
 declaração provisória de trabalho, não uma alegação de conformidade. A
@@ -32,17 +32,27 @@ dois modos.
 - anúncios pontuais de tela, reprodução, pausa, navegação e conclusão, sem
   anunciar o contador que muda a cada palavra;
 - navegação por teclado nas abas, controles de leitura, capítulos e scrubber;
-- zoom permitido, alvos principais de 44 × 44 CSS px, foco visível e respeito a
+- zoom permitido, reflow protegido em 1280, 640 e 320 CSS px, alvos principais
+  de pelo menos 48 × 48 CSS px, foco visível não obscurecido e respeito a
   `prefers-reduced-motion`;
+- opção por dispositivo “Alta legibilidade”, com superfícies sem textura e pares
+  essenciais que miram 7:1, sem alegação de conformidade AAA integral;
+- suporte explícito a `forced-colors`, espaçamento de texto definido pelo usuário,
+  estados com texto/forma além de cor e alternativa de teclado ao arrasto do
+  scrubber;
 - teste estático de contratos e auditoria renderizada com axe-core 4.12.1.
 
 ## Avaliação realizada
 
-Em 18 de julho de 2026, o gate automatizado auditou 16 combinações de
-estado/skin em Edge headless: login, criação de perfil, biblioteca vazia,
-importação, leitor Foco, leitor Fluxo, Sistema e diálogo de atalhos. O axe-core
-não encontrou violações. Contratos adicionais verificam IDs e referências ARIA,
-nomes de campos, ordem de headings, controles nativos, erros e regiões vivas.
+Em 22 de julho de 2026, o gate automatizado auditou 20 combinações de
+estado/skin/emulação em Edge headless: os oito estados principais nas duas skins,
+login com Alta legibilidade e diálogo de atalhos com `forced-colors` ativo. Em
+cada combinação, o reflow foi medido em 1280, 640 e 320 CSS px — equivalentes aos
+cenários de 100%, 200% e 400% partindo de 1280 px — sem rolagem horizontal da
+página. O axe-core não encontrou violações e a árvore acessível do Edge não teve
+controle sem nome. Contratos adicionais verificam IDs e referências ARIA, nomes
+de campos, ordem de headings, controles nativos, erros, regiões vivas e os pares
+de contraste mantidos no código.
 
 Automação não detecta todos os problemas de acessibilidade. A matriz manual em
 [ACCESSIBILITY_TESTING.md](ACCESSIBILITY_TESTING.md) ainda precisa ser executada
@@ -60,11 +70,13 @@ com NVDA, JAWS, VoiceOver e TalkBack antes de fechar o R9.
 
 ## Limitações conhecidas
 
-A revisão profunda de reflow/zoom, contraste forçado e mobilidade pertence ao
-R10. OpenDyslexic, Leitura Biônica, Modo Zen e demais adaptações cognitivas
-pertencem ao R11. Equivalência visual de todo feedback sonoro pertence ao R12.
-A internacionalização e o inglês padrão pertencem ao R13. Por isso, esta versão
-ainda não deve ser apresentada como plenamente conforme às WCAG.
+A validação humana de alto contraste do sistema, zoom real do navegador,
+simulações de daltonismo e tecnologias motoras (switch scanning, Voice Access e
+rastreamento ocular) continua pendente no R10. OpenDyslexic, Leitura Biônica,
+Modo Zen e demais adaptações cognitivas pertencem ao R11. Equivalência visual de
+todo feedback sonoro pertence ao R12. A internacionalização e o inglês padrão
+pertencem ao R13. Por isso, esta versão ainda não deve ser apresentada como
+plenamente conforme às WCAG.
 
 ## Relatar uma barreira
 

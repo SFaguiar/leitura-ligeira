@@ -26,6 +26,9 @@
         <button id="shortcuts-btn" class="icon-btn topbar-tool" type="button" title="Ver atalhos de teclado" aria-haspopup="dialog">
             <span aria-hidden="true">?</span><span class="topbar-tool-label">Atalhos</span>
         </button>
+        <button id="legibility-toggle" class="icon-btn topbar-tool" type="button" title="Ativar alta legibilidade" aria-label="Ativar alta legibilidade" aria-pressed="false">
+            <span aria-hidden="true">◐</span><span class="topbar-tool-label">Legibilidade</span>
+        </button>
         <button id="system-btn" class="icon-btn topbar-tool" type="button" title="Abrir diagnóstico do sistema" hidden>
             <span aria-hidden="true">⚙</span><span class="topbar-tool-label">Sistema</span>
         </button>
@@ -328,7 +331,8 @@
         <button type="button" id="flow-back-to-position" class="flow-back-btn" hidden>↓ Voltar pra posição atual</button>
     </div>
 
-    <div id="scrubber" class="scrubber" role="slider" tabindex="0" aria-label="Posição no documento" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="Início do documento">
+    <p id="scrubber-keyboard-help" class="sr-only">Use as setas para pequenos avanços, Page Up e Page Down para saltos maiores, e Home ou End para o início ou fim do documento.</p>
+    <div id="scrubber" class="scrubber" role="slider" tabindex="0" aria-label="Posição no documento" aria-describedby="scrubber-keyboard-help" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="Início do documento">
         <div class="progress-bar">
             <div id="progress-fill" class="progress-fill"></div>
         </div>

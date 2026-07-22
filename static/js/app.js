@@ -124,6 +124,7 @@ const navPauseSwitchToggle = document.getElementById("nav-pause-switch-toggle");
 
 const themeToggle = document.getElementById("theme-toggle");
 const skinSelect = document.getElementById("skin-select");
+const legibilityToggle = document.getElementById("legibility-toggle");
 const transportWarning = document.getElementById("transport-warning");
 const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 const skipLink = document.getElementById("skip-link");
@@ -204,6 +205,7 @@ const SETTINGS_PREFIX = "settings.";
 const SETTINGS_TYPES = {
     theme: "string",
     skin: "string",
+    highLegibility: "boolean",
     activeMode: "string",
     wpmFocus: "number",
     wpmFlow: "number",
@@ -222,6 +224,7 @@ const SETTINGS_TYPES = {
 const SETTINGS_DEFAULTS = {
     theme: "light",
     skin: "library",
+    highLegibility: false,
     activeMode: "focus",
     wpmFocus: 300,
     chunkFocus: 1,
@@ -340,8 +343,23 @@ function applySkin(skin) {
     updateThemeMetadata();
 }
 
+// Alta legibilidade é uma preferência do dispositivo: aplica contraste forte,
+// superfícies sem textura e foco inequívoco sem alterar dados ou sessões da conta.
+function applyHighLegibility(enabled) {
+    const active = Boolean(enabled);
+    document.documentElement.setAttribute("data-legibility", active ? "high" : "standard");
+    legibilityToggle.setAttribute("aria-pressed", String(active));
+    legibilityToggle.setAttribute("aria-label", active ? "Desativar alta legibilidade" : "Ativar alta legibilidade");
+    legibilityToggle.title = active ? "Desativar alta legibilidade" : "Ativar alta legibilidade";
+    setSetting("highLegibility", active);
+}
+
 applySkin(getSetting("skin"));
+applyHighLegibility(getSetting("highLegibility"));
 skinSelect.addEventListener("change", () => applySkin(skinSelect.value));
+legibilityToggle.addEventListener("click", () => {
+    applyHighLegibility(document.documentElement.dataset.legibility !== "high");
+});
 
 // ---- Theme ----
 function applyTheme(theme) {

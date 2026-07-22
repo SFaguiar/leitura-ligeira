@@ -2946,3 +2946,271 @@ html[data-skin="odysseus"] .health-badge.not_required {
         transition-duration: 0.01ms !important;
     }
 }
+/* R10 — Baixa visão, daltonismo e mobilidade reduzida. */
+:root {
+    --focus-ring: #7a4c00;
+}
+
+html {
+    scroll-padding-block: 5.5rem 1rem;
+}
+
+button,
+input,
+select,
+textarea,
+[tabindex]:not([tabindex="-1"]) {
+    scroll-margin-block: 0.9rem;
+}
+
+/* Principal touch targets are 48 CSS px; the scrubber still has complete
+   keyboard operation, so drag is never the only way to seek. */
+.btn,
+.icon-btn,
+.mode-btn,
+select,
+input:not([type="checkbox"]):not([type="range"]),
+textarea,
+input[type="range"],
+.scrubber {
+    min-height: 48px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+}
+
+.shelf-tabs .mode-btn.active,
+.mode-switch:not(.shelf-tabs) .mode-btn.active {
+    box-shadow: inset 0 -3px currentColor, 0 0 0 1px currentColor;
+}
+
+.shelf-tabs .mode-btn.active::before {
+    content: "✓ ";
+    font-weight: 800;
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.mode-btn:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.stats-document-btn:focus-visible,
+.doc-info:focus-visible,
+.scrubber:focus-visible,
+.rsvp-stage:focus-visible,
+.skip-link:focus-visible,
+.toc-entry-btn:focus-visible {
+    outline: 4px solid var(--focus-ring);
+    outline-offset: 4px;
+    box-shadow: 0 0 0 7px var(--bg);
+}
+
+/* User style sheets that enlarge text or adjust spacing remain free to win;
+   wrapping here prevents their wider words from causing page-level overflow. */
+.view,
+.modal-card,
+.system-component,
+.document-list li,
+.flow-content,
+.reading-progress-info,
+.app-toast,
+.profile-feedback,
+.action-error {
+    overflow-wrap: anywhere;
+}
+
+html[data-legibility="high"] {
+    --bg: #ffffff;
+    --fg: #111111;
+    --muted: #222222;
+    --accent: #003e9f;
+    --accent-hover: #002b70;
+    --accent-soft: #e8f0ff;
+    --card-bg: #ffffff;
+    --surface-raised: #ffffff;
+    --border: #4a4a4a;
+    --border-strong: #111111;
+    --wood: #111111;
+    --wood-light: #222222;
+    --brass: #003e9f;
+    --brass-soft: #e8f0ff;
+    --danger: #8c0000;
+    --focus-ring: #8c4a00;
+    color-scheme: light;
+}
+
+html[data-legibility="high"][data-theme="dark"],
+html[data-legibility="high"][data-skin="odysseus"] {
+    --bg: #000000;
+    --fg: #ffffff;
+    --muted: #f5f5f5;
+    --accent: #8ac5ff;
+    --accent-hover: #c0e2ff;
+    --accent-soft: #14283a;
+    --card-bg: #000000;
+    --surface-raised: #000000;
+    --border: #e7e7e7;
+    --border-strong: #ffffff;
+    --wood: #000000;
+    --wood-light: #111111;
+    --brass: #ffe16a;
+    --brass-soft: #312a00;
+    --danger: #ffb4ab;
+    --focus-ring: #ffe16a;
+    color-scheme: dark;
+}
+
+html[data-legibility="high"] body,
+html[data-legibility="high"] .topbar,
+html[data-legibility="high"] .rsvp-stage,
+html[data-legibility="high"] .flow-region,
+html[data-legibility="high"] .modal-card {
+    background-image: none;
+}
+
+html[data-legibility="high"] body::before {
+    display: none;
+}
+
+html[data-legibility="high"] .topbar {
+    color: var(--fg);
+    border-color: var(--border-strong);
+    background-color: var(--wood);
+    box-shadow: none;
+}
+
+html[data-legibility="high"] .topbar .btn,
+html[data-legibility="high"] .topbar .icon-btn,
+html[data-legibility="high"] .skin-picker select {
+    color: var(--fg);
+    border-color: var(--border-strong);
+    background: var(--wood);
+}
+
+html[data-legibility="high"] .brand,
+html[data-legibility="high"] .brand-tagline,
+html[data-legibility="high"] .topbar .current-user-name {
+    color: var(--fg);
+}
+
+html[data-legibility="high"] .brand-mark {
+    color: var(--fg);
+    border-color: var(--border-strong);
+    background: var(--bg);
+    box-shadow: none;
+}
+
+html[data-legibility="high"] .btn-primary,
+html[data-legibility="high"] .mode-btn.active,
+html[data-legibility="high"] .stats-scope .btn.active,
+html[data-legibility="high"] .tts-toggle-btn.active {
+    color: #ffffff;
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: none;
+}
+
+html[data-legibility="high"][data-theme="dark"] .btn-primary,
+html[data-legibility="high"][data-theme="dark"] .mode-btn.active,
+html[data-legibility="high"][data-theme="dark"] .stats-scope .btn.active,
+html[data-legibility="high"][data-theme="dark"] .tts-toggle-btn.active,
+html[data-legibility="high"][data-skin="odysseus"] .btn-primary,
+html[data-legibility="high"][data-skin="odysseus"] .mode-btn.active,
+html[data-legibility="high"][data-skin="odysseus"] .stats-scope .btn.active,
+html[data-legibility="high"][data-skin="odysseus"] .tts-toggle-btn.active {
+    color: #000000;
+}
+
+html[data-legibility="high"] .doc-progress-fill,
+html[data-legibility="high"] .progress-fill,
+html[data-legibility="high"] .stats-mode-fill {
+    background: var(--accent);
+}
+
+html[data-legibility="high"] .health-badge,
+html[data-legibility="high"] .health-badge.degraded,
+html[data-legibility="high"] .health-badge.unavailable,
+html[data-legibility="high"] .health-badge.not_required {
+    color: var(--fg);
+    border: 2px solid currentColor;
+    background: var(--card-bg);
+}
+
+@media (max-width: 560px) {
+    .topbar {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+    }
+
+    .topbar-actions {
+        flex: 1 1 auto;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .topbar .btn,
+    .topbar .icon-btn,
+    .skin-picker select {
+        min-height: 48px;
+    }
+}
+
+@media (forced-colors: active) {
+    * {
+        forced-color-adjust: auto;
+    }
+
+    /* Skin-specific foregrounds must not survive the system palette. */
+    body * {
+        color: CanvasText !important;
+        border-color: CanvasText;
+    }
+
+    body,
+    .topbar,
+    .rsvp-stage,
+    .flow-region,
+    .modal-card,
+    .library-toolbar,
+    .sliders,
+    .system-summary,
+    .system-component,
+    .app-toast,
+    .document-list li {
+        color: CanvasText;
+        border-color: CanvasText;
+        background: Canvas;
+        background-image: none;
+        box-shadow: none;
+    }
+
+    .btn-primary,
+    .mode-btn.active,
+    .stats-scope .btn.active,
+    .tts-toggle-btn.active,
+    .progress-fill,
+    .doc-progress-fill,
+    .stats-mode-fill {
+        color: HighlightText !important;
+        border-color: Highlight !important;
+        background: Highlight !important;
+    }
+
+    .btn:focus-visible,
+    .icon-btn:focus-visible,
+    .mode-btn:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    .scrubber:focus-visible,
+    .rsvp-stage:focus-visible,
+    .doc-info:focus-visible,
+    .toc-entry-btn:focus-visible {
+        outline-color: Highlight;
+        box-shadow: 0 0 0 4px Canvas;
+    }
+}

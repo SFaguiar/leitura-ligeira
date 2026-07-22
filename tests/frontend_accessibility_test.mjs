@@ -50,11 +50,17 @@ assert.match(app, /<button class="doc-info" type="button">/);
 assert.doesNotMatch(app, /docInfo\.addEventListener\("keydown"/);
 assert.match(app, /button\.className = "toc-entry-btn"/);
 
-assert.match(html, /id="scrubber"[^>]*role="slider"[^>]*tabindex="0"/);
+assert.match(html, /id="legibility-toggle"[^>]*aria-pressed="false"/);
+assert.match(app, /function applyHighLegibility\(enabled\)/);
+assert.match(app, /highLegibility: "boolean"/);
+assert.match(html, /id="scrubber-keyboard-help"/);
+assert.match(html, /id="scrubber"(?=[^>]*role="slider")(?=[^>]*aria-describedby="scrubber-keyboard-help")(?=[^>]*tabindex="0")/);
 assert.match(app, /scrubber\.addEventListener\("keydown"/);
 assert.match(app, /e\.target\.closest\("input, select, textarea, button, a,/);
 assert.doesNotMatch(app, /rsvpStage\.addEventListener\("keydown"/);
-assert.match(css, /\.btn,[\s\S]*min-height: 44px;/);
+assert.match(css, /\.btn,[\s\S]*min-height: 48px;/);
+assert.match(css, /@media \(forced-colors: active\)[\s\S]*forced-color-adjust: auto/);
+assert.match(css, /\.shelf-tabs \.mode-btn\.active::before[\s\S]*content: "✓ ";/);
 assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation-duration: 0\.01ms !important/);
 assert.match(css, /\.skip-link:focus[\s\S]*transform: translateY\(0\)/);
 assert.doesNotMatch(app, /\balert\(/);
@@ -86,4 +92,14 @@ for (const [foreground, background, label] of palettePairs) {
     assert.ok(contrast(foreground, background) >= 4.5, `${label} must reach WCAG AA contrast`);
 }
 
-console.log(`Frontend accessibility harness: OK (${modalTags.length} dialogs, ${palettePairs.length} contrast pairs)`);
+const highLegibilityPairs = [
+    ["#111111", "#ffffff", "High-legibility light text"],
+    ["#003e9f", "#ffffff", "High-legibility light accent"],
+    ["#ffffff", "#000000", "High-legibility dark text"],
+    ["#8ac5ff", "#000000", "High-legibility dark accent"],
+];
+for (const [foreground, background, label] of highLegibilityPairs) {
+    assert.ok(contrast(foreground, background) >= 7, `${label} must target high-legibility contrast`);
+}
+
+console.log(`Frontend accessibility harness: OK (${modalTags.length} dialogs, ${palettePairs.length} AA pairs, ${highLegibilityPairs.length} high-legibility pairs)`);
