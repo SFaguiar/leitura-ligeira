@@ -40,19 +40,27 @@ dois modos.
 - suporte explícito a `forced-colors`, espaçamento de texto definido pelo usuário,
   estados com texto/forma além de cor e alternativa de teclado ao arrasto do
   scrubber;
+- preferências por perfil para OpenDyslexic local, coluna, altura/espaçamento,
+  guia de leitura, miras ORP e baixa estimulação; todas têm padrão conservador,
+  são opt-in e reversíveis;
+- Leitura Biônica somente no modo Fluxo: sua marca visual é escondida da árvore
+  acessível e cada palavra contínua mantém uma única alternativa de texto;
+- Modo Zen, que mantém sair e pausar/reproduzir acessíveis enquanto oculta
+  contadores, progresso e ações secundárias;
 - teste estático de contratos e auditoria renderizada com axe-core 4.12.1.
 
 ## Avaliação realizada
 
-Em 22 de julho de 2026, o gate automatizado auditou 20 combinações de
+Em 22 de julho de 2026, o gate automatizado auditou 24 combinações de
 estado/skin/emulação em Edge headless: os oito estados principais nas duas skins,
-login com Alta legibilidade e diálogo de atalhos com `forced-colors` ativo. Em
-cada combinação, o reflow foi medido em 1280, 640 e 320 CSS px — equivalentes aos
-cenários de 100%, 200% e 400% partindo de 1280 px — sem rolagem horizontal da
-página. O axe-core não encontrou violações e a árvore acessível do Edge não teve
-controle sem nome. Contratos adicionais verificam IDs e referências ARIA, nomes
-de campos, ordem de headings, controles nativos, erros, regiões vivas e os pares
-de contraste mantidos no código.
+login com Alta legibilidade, diálogo de atalhos com `forced-colors` e os novos
+estados Fluxo com preferências neurodiversas e Modo Zen. Em cada combinação, o
+reflow foi medido em 1280, 640 e 320 CSS px — equivalentes aos cenários de 100%,
+200% e 400% partindo de 1280 px — totalizando 72 medições sem rolagem horizontal
+da página. O axe-core não encontrou violações e a árvore acessível do Edge não
+teve controle sem nome. Contratos adicionais verificam IDs e referências ARIA,
+nomes de campos, ordem de headings, controles nativos, erros, regiões vivas, os
+pares de contraste mantidos no código e a fonte local licenciada.
 
 Automação não detecta todos os problemas de acessibilidade. A matriz manual em
 [ACCESSIBILITY_TESTING.md](ACCESSIBILITY_TESTING.md) ainda precisa ser executada
@@ -72,9 +80,10 @@ com NVDA, JAWS, VoiceOver e TalkBack antes de fechar o R9.
 
 A validação humana de alto contraste do sistema, zoom real do navegador,
 simulações de daltonismo e tecnologias motoras (switch scanning, Voice Access e
-rastreamento ocular) continua pendente no R10. OpenDyslexic, Leitura Biônica,
-Modo Zen e demais adaptações cognitivas pertencem ao R11. Equivalência visual de
-todo feedback sonoro pertence ao R12. A internacionalização e o inglês padrão
+rastreamento ocular) continua pendente no R10. O roteiro cognitivo de R11 ainda
+precisa validar sessões longas, Leitura Biônica/OpenDyslexic/Zen com TTS e
+velocidades altas em usuários e tecnologias assistivas reais. Equivalência visual
+de todo feedback sonoro pertence ao R12. A internacionalização e o inglês padrão
 pertencem ao R13. Por isso, esta versão ainda não deve ser apresentada como
 plenamente conforme às WCAG.
 

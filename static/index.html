@@ -316,6 +316,7 @@
             </nav>
         </div>
         <h2 id="reader-title" class="reader-title" tabindex="-1"></h2>
+        <button id="zen-toggle" class="icon-btn zen-toggle" type="button" aria-pressed="false" title="Ativar modo Zen">Zen</button>
         <div class="mode-switch" role="group" aria-label="Modo de leitura">
             <button id="mode-focus-btn" class="mode-btn active" type="button" aria-pressed="true" data-mode="focus">Foco</button>
             <button id="mode-flow-btn" class="mode-btn" type="button" aria-pressed="false" data-mode="flow">Fluxo</button>
@@ -388,9 +389,64 @@
                 <label for="font-slider">Tamanho da fonte: <span id="font-value">48</span>px</label>
                 <input id="font-slider" type="range" min="24" max="96" step="2" value="48" />
             </div>
+            <fieldset id="reader-preferences" class="reader-preferences">
+                <legend>Conforto de leitura</legend>
+                <p class="reader-preferences-help">Preferências opt-in, reversíveis e pessoais. Não constituem tratamento médico.</p>
+                <div class="reader-preferences-grid">
+                    <div class="slider-row">
+                        <label for="reader-font-select">Fonte de leitura</label>
+                        <select id="reader-font-select">
+                            <option value="system">Fonte do sistema</option>
+                            <option value="opendyslexic">OpenDyslexic</option>
+                        </select>
+                    </div>
+                    <div class="slider-row">
+                        <label for="reader-column-select">Largura da coluna</label>
+                        <select id="reader-column-select">
+                            <option value="narrow">Estreita</option>
+                            <option value="comfortable">Confortável</option>
+                            <option value="wide">Larga</option>
+                        </select>
+                    </div>
+                    <div class="slider-row">
+                        <label for="reader-line-height-slider">Altura de linha: <span id="reader-line-height-value">1.9</span></label>
+                        <input id="reader-line-height-slider" type="range" min="1.4" max="2.4" step="0.1" value="1.9" />
+                    </div>
+                    <div class="slider-row">
+                        <label for="reader-letter-spacing">Espaçamento entre letras: <span id="reader-letter-spacing-value">0.00em</span></label>
+                        <input id="reader-letter-spacing" type="range" min="0" max="0.16" step="0.01" value="0" />
+                    </div>
+                    <div class="slider-row">
+                        <label for="reader-word-spacing">Espaçamento entre palavras: <span id="reader-word-spacing-value">0.00em</span></label>
+                        <input id="reader-word-spacing" type="range" min="0" max="0.4" step="0.02" value="0" />
+                    </div>
+                </div>
+                <div class="reader-preferences-toggles">
+                    <div id="bionic-row" class="slider-row toggle-row" hidden>
+                        <label for="bionic-toggle">Leitura Biônica no Fluxo</label>
+                        <button type="button" id="bionic-toggle" class="icon-btn" title="Ativar ou desativar Leitura Biônica">Desligado</button>
+                    </div>
+                    <div id="reading-guide-row" class="slider-row toggle-row">
+                        <label for="reading-guide-toggle">Guia de leitura</label>
+                        <button type="button" id="reading-guide-toggle" class="icon-btn" title="Ativar ou desativar guia de leitura">Desligado</button>
+                    </div>
+                    <div id="low-stimulation-row" class="slider-row toggle-row">
+                        <label for="low-stimulation-toggle">Baixa estimulação</label>
+                        <button type="button" id="low-stimulation-toggle" class="icon-btn" title="Ativar ou desativar baixa estimulação">Desligado</button>
+                    </div>
+                    <div id="flow-auto-follow-row" class="slider-row toggle-row" hidden>
+                        <label for="flow-auto-follow-toggle">Acompanhar posição no Fluxo</label>
+                        <button type="button" id="flow-auto-follow-toggle" class="icon-btn" title="Ativar ou desativar rolagem de acompanhamento">Ligado</button>
+                    </div>
+                </div>
+            </fieldset>
             <div id="orp-row" class="slider-row toggle-row">
                 <label for="orp-toggle">Destaque ORP (letra-âncora)</label>
                 <button type="button" id="orp-toggle" class="icon-btn" title="Ativar/desativar ORP">Desligado</button>
+            </div>
+            <div id="orp-guide-row" class="slider-row toggle-row">
+                <label for="orp-guide-toggle">Miras para ORP</label>
+                <button type="button" id="orp-guide-toggle" class="icon-btn" title="Ativar ou desativar miras da letra-âncora">Desligado</button>
             </div>
             <div id="nav-snap-back-row" class="slider-row toggle-row" hidden>
                 <label for="nav-snap-back-toggle">Voltar ao Foco ao clicar numa palavra</label>

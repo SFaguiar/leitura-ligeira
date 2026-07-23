@@ -1382,6 +1382,14 @@ regressão automatizada e evidência visual.
 
 #### [ ] R11 — Neurodiversidade, dislexia e controle cognitivo
 
+**Estado em 2026-07-22:** implementação e regressão automatizada concluídas.
+Leitura Biônica, OpenDyslexic local, Modo Zen, baixa estimulação, guia/miras e
+preferências de espaçamento/coluna são opt-in, por perfil e reversíveis. O gate
+local aprovou 64 testes Python, 24 auditorias axe/árvore AX e 72 reflows, com
+relatório em `release-reports/release-gate-20260722T230103.json`. O gate
+permanece aberto até o roteiro cognitivo e as combinações humanas com tecnologia
+assistiva, TTS e leitura prolongada serem aceitos sem barreiras críticas/altas.
+
 - **Leitura Biônica opt-in no Fluxo:** destacar visualmente a parte inicial da
   palavra sem fragmentar sua leitura por tecnologia assistiva e sem quebrar a
   spanificação lazy de blocos ou o desempenho em livros grandes.

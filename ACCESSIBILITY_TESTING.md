@@ -114,3 +114,30 @@ evidência não substitui as verificações abaixo.
 O R10 só pode ser marcado como concluído com essas matrizes sem perda funcional
 e com zero achado crítico/alto. A automação atual protege regressões, mas não
 substitui esses aceites humanos.
+
+## R11 — neurodiversidade, dislexia e controle cognitivo: matriz humana pendente
+
+A automação protege os controles, a fonte local licenciada, a marca Biônica
+oculta da árvore acessível e as combinações renderizadas nas duas skins. Ela não
+substitui pessoas lendo por períodos prolongados. Execute este roteiro em cada
+skin, tema e com leitor de tela quando disponível:
+
+1. No Fluxo, ligar/desligar Leitura Biônica em documento curto e em um documento
+   patológico; confirmar que a palavra é ouvida uma vez, sem soletração por
+   partes, e que não há travamento ao rolar.
+2. Selecionar OpenDyslexic e depois Fonte do sistema; alterar coluna, linha,
+   letras e palavras; confirmar reversão imediata, reflow e persistência após
+   logout/login sem alegar benefício clínico.
+3. Ligar Guia, Miras ORP e Baixa estimulação; confirmar contraste, foco, texto e
+   estado compreensíveis em zoom real, `forced-colors` e reduced motion.
+4. No Foco e Fluxo, entrar e sair do Zen apenas por teclado. Pausa/reprodução e
+   saída devem continuar alcançáveis; título, progresso, contadores e ações
+   secundárias devem permanecer ocultos enquanto Zen estiver ativo.
+5. Com Narrador em 0,5x, 1x e 4x, pausar, buscar, trocar Foco/Fluxo e desligar
+   o acompanhamento do Fluxo. Confirmar que não há autoplay, rolagem imposta,
+   perda de posição ou diferença entre áudio e destaque.
+6. Registrar duração, navegador, skin, configurações, tecnologia assistiva,
+   fadiga/confusão observada e qualquer achado sem dados pessoais.
+
+O R11 só é aceito após não haver barreira crítica/alta nesse roteiro; preferências
+cognitivas continuam opcionais e não são apresentadas como tratamento médico.

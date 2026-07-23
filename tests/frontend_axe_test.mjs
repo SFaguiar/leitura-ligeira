@@ -79,6 +79,7 @@ class Cdp {
         this.url = url;
         this.nextId = 1;
         this.pending = new Map();
+        this.runtimeExceptions = [];
     }
 
     async connect() {
@@ -89,6 +90,10 @@ class Cdp {
         });
         this.socket.addEventListener("message", (event) => {
             const message = JSON.parse(event.data);
+            if (message.method === "Runtime.exceptionThrown") {
+                this.runtimeExceptions.push(message.params.exceptionDetails);
+                return;
+            }
             if (!message.id) return;
             const pending = this.pending.get(message.id);
             if (!pending) return;
@@ -253,8 +258,12 @@ try {
                 '"; select.dispatchEvent(new Event("change", { bubbles: true })); })()',
         );
         await new Promise((resolve) => setTimeout(resolve, 300));
-        const appliedSkin = await evaluate(cdp, "document.documentElement.dataset.skin");
-        assert.equal(appliedSkin, skin, "skin selector did not settle before axe");
+        const appliedSkin = await evaluate(cdp, "String(document.documentElement.getAttribute(\"data-skin\") || \"\")");
+        assert.equal(
+            appliedSkin,
+            skin,
+            "skin selector did not settle before axe; runtime exceptions: " + JSON.stringify(cdp.runtimeExceptions),
+        );
     }
 
     async function audit(label) {
@@ -324,6 +333,19 @@ try {
     await evaluate(cdp, 'document.querySelector("#mode-flow-btn").click()');
     await waitForDom(cdp, '!document.querySelector("#flow-region").hidden');
     await audit("reader-flow");
+
+    await evaluate(
+        cdp,
+        '(() => { const font = document.querySelector("#reader-font-select"); font.value = "opendyslexic"; font.dispatchEvent(new Event("change", { bubbles: true })); document.querySelector("#bionic-toggle").click(); document.querySelector("#reading-guide-toggle").click(); document.querySelector("#low-stimulation-toggle").click(); })()',
+    );
+    await waitForDom(cdp, 'document.querySelector("#flow-content .bionic-visual")');
+    await audit("reader-flow-neurodiversity");
+
+    await evaluate(cdp, 'document.querySelector("#zen-toggle").click()');
+    await waitForDom(cdp, 'document.querySelector("#reader-view").classList.contains("zen-mode") && !document.querySelector("#play-pause-btn").hidden');
+    await audit("reader-zen");
+    await evaluate(cdp, 'document.querySelector("#zen-toggle").click()');
+    await waitForDom(cdp, '!document.querySelector("#reader-view").classList.contains("zen-mode")');
 
     await evaluate(cdp, "history.go(-2)");
     await waitForDom(cdp, '!document.querySelector("#library-view").hidden', 10000);

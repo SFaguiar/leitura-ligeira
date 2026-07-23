@@ -53,6 +53,17 @@ CREATE TABLE IF NOT EXISTS user_settings (
     nav_pause_on_switch INTEGER NOT NULL DEFAULT 0,
     theme TEXT NOT NULL DEFAULT 'light',
     skin TEXT NOT NULL DEFAULT 'library',
+    reader_font TEXT NOT NULL DEFAULT 'system',
+    bionic_reading INTEGER NOT NULL DEFAULT 0,
+    zen_mode INTEGER NOT NULL DEFAULT 0,
+    low_stimulation INTEGER NOT NULL DEFAULT 0,
+    reader_column TEXT NOT NULL DEFAULT 'comfortable',
+    reader_line_height REAL NOT NULL DEFAULT 1.9,
+    reader_letter_spacing REAL NOT NULL DEFAULT 0,
+    reader_word_spacing REAL NOT NULL DEFAULT 0,
+    reading_guide INTEGER NOT NULL DEFAULT 0,
+    orp_guide INTEGER NOT NULL DEFAULT 0,
+    flow_auto_follow INTEGER NOT NULL DEFAULT 1,
     collect_stats INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -121,6 +132,17 @@ MIGRATIONS = [
 
 USER_SETTINGS_MIGRATIONS = [
     ("skin", "ALTER TABLE user_settings ADD COLUMN skin TEXT NOT NULL DEFAULT 'library'"),
+    ("reader_font", "ALTER TABLE user_settings ADD COLUMN reader_font TEXT NOT NULL DEFAULT 'system'"),
+    ("bionic_reading", "ALTER TABLE user_settings ADD COLUMN bionic_reading INTEGER NOT NULL DEFAULT 0"),
+    ("zen_mode", "ALTER TABLE user_settings ADD COLUMN zen_mode INTEGER NOT NULL DEFAULT 0"),
+    ("low_stimulation", "ALTER TABLE user_settings ADD COLUMN low_stimulation INTEGER NOT NULL DEFAULT 0"),
+    ("reader_column", "ALTER TABLE user_settings ADD COLUMN reader_column TEXT NOT NULL DEFAULT 'comfortable'"),
+    ("reader_line_height", "ALTER TABLE user_settings ADD COLUMN reader_line_height REAL NOT NULL DEFAULT 1.9"),
+    ("reader_letter_spacing", "ALTER TABLE user_settings ADD COLUMN reader_letter_spacing REAL NOT NULL DEFAULT 0"),
+    ("reader_word_spacing", "ALTER TABLE user_settings ADD COLUMN reader_word_spacing REAL NOT NULL DEFAULT 0"),
+    ("reading_guide", "ALTER TABLE user_settings ADD COLUMN reading_guide INTEGER NOT NULL DEFAULT 0"),
+    ("orp_guide", "ALTER TABLE user_settings ADD COLUMN orp_guide INTEGER NOT NULL DEFAULT 0"),
+    ("flow_auto_follow", "ALTER TABLE user_settings ADD COLUMN flow_auto_follow INTEGER NOT NULL DEFAULT 1"),
 ]
 
 SCHEMA_OBJECTS = [

@@ -115,9 +115,25 @@ const chunkSlider = document.getElementById("chunk-slider");
 const chunkValue = document.getElementById("chunk-value");
 const fontSlider = document.getElementById("font-slider");
 const fontValue = document.getElementById("font-value");
+const zenToggle = document.getElementById("zen-toggle");
+const readerFontSelect = document.getElementById("reader-font-select");
+const readerColumnSelect = document.getElementById("reader-column-select");
+const readerLineHeightSlider = document.getElementById("reader-line-height-slider");
+const readerLineHeightValue = document.getElementById("reader-line-height-value");
+const readerLetterSpacingSlider = document.getElementById("reader-letter-spacing");
+const readerLetterSpacingValue = document.getElementById("reader-letter-spacing-value");
+const readerWordSpacingSlider = document.getElementById("reader-word-spacing");
+const readerWordSpacingValue = document.getElementById("reader-word-spacing-value");
+const bionicRow = document.getElementById("bionic-row");
+const bionicToggle = document.getElementById("bionic-toggle");
+const readingGuideToggle = document.getElementById("reading-guide-toggle");
+const lowStimulationToggle = document.getElementById("low-stimulation-toggle");
+const flowAutoFollowRow = document.getElementById("flow-auto-follow-row");
+const flowAutoFollowToggle = document.getElementById("flow-auto-follow-toggle");
 
 const orpRow = document.getElementById("orp-row");
 const orpToggle = document.getElementById("orp-toggle");
+const orpGuideToggle = document.getElementById("orp-guide-toggle");
 const navSnapBackRow = document.getElementById("nav-snap-back-row");
 const navSnapBackToggle = document.getElementById("nav-snap-back-toggle");
 const navPauseSwitchToggle = document.getElementById("nav-pause-switch-toggle");
@@ -206,6 +222,17 @@ const SETTINGS_TYPES = {
     theme: "string",
     skin: "string",
     highLegibility: "boolean",
+    readerFont: "string",
+    bionicReading: "boolean",
+    zenMode: "boolean",
+    lowStimulation: "boolean",
+    readerColumn: "string",
+    readerLineHeight: "number",
+    readerLetterSpacing: "number",
+    readerWordSpacing: "number",
+    readingGuide: "boolean",
+    orpGuide: "boolean",
+    flowAutoFollow: "boolean",
     activeMode: "string",
     wpmFocus: "number",
     wpmFlow: "number",
@@ -225,6 +252,17 @@ const SETTINGS_DEFAULTS = {
     theme: "light",
     skin: "library",
     highLegibility: false,
+    readerFont: "system",
+    bionicReading: false,
+    zenMode: false,
+    lowStimulation: false,
+    readerColumn: "comfortable",
+    readerLineHeight: 1.9,
+    readerLetterSpacing: 0,
+    readerWordSpacing: 0,
+    readingGuide: false,
+    orpGuide: false,
+    flowAutoFollow: true,
     activeMode: "focus",
     wpmFocus: 300,
     chunkFocus: 1,
@@ -246,6 +284,17 @@ const SETTINGS_DEFAULTS = {
 const SETTINGS_SERVER_KEYS = {
     theme: "theme",
     skin: "skin",
+    readerFont: "reader_font",
+    bionicReading: "bionic_reading",
+    zenMode: "zen_mode",
+    lowStimulation: "low_stimulation",
+    readerColumn: "reader_column",
+    readerLineHeight: "reader_line_height",
+    readerLetterSpacing: "reader_letter_spacing",
+    readerWordSpacing: "reader_word_spacing",
+    readingGuide: "reading_guide",
+    orpGuide: "orp_guide",
+    flowAutoFollow: "flow_auto_follow",
     activeMode: "active_mode",
     wpmFocus: "wpm_focus",
     wpmFlow: "wpm_flow",
@@ -323,6 +372,17 @@ function applyServerSettings(s) {
     localStorage.setItem(SETTINGS_PREFIX + "navPauseOnSwitch", s.nav_pause_on_switch ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "collectStats", s.collect_stats ? "1" : "0");
     localStorage.setItem(SETTINGS_PREFIX + "skin", s.skin);
+    localStorage.setItem(SETTINGS_PREFIX + "readerFont", s.reader_font);
+    localStorage.setItem(SETTINGS_PREFIX + "bionicReading", s.bionic_reading ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "zenMode", s.zen_mode ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "lowStimulation", s.low_stimulation ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "readerColumn", s.reader_column);
+    localStorage.setItem(SETTINGS_PREFIX + "readerLineHeight", String(s.reader_line_height));
+    localStorage.setItem(SETTINGS_PREFIX + "readerLetterSpacing", String(s.reader_letter_spacing));
+    localStorage.setItem(SETTINGS_PREFIX + "readerWordSpacing", String(s.reader_word_spacing));
+    localStorage.setItem(SETTINGS_PREFIX + "readingGuide", s.reading_guide ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "orpGuide", s.orp_guide ? "1" : "0");
+    localStorage.setItem(SETTINGS_PREFIX + "flowAutoFollow", s.flow_auto_follow ? "1" : "0");
 }
 
 function modeKey(base) {
@@ -665,6 +725,7 @@ async function afterLogin() {
     }
     applyTheme(getSetting("theme"));
     applySkin(getSetting("skin"));
+    loadReaderPreferences();
     // Voice discovery is best-effort and may wait on the local Kokoro service;
     // it must never hold the library hostage during login.
     loadTtsVoices();
@@ -1025,6 +1086,165 @@ navPauseSwitchToggle.addEventListener("click", () => {
     applyNavToggleUI();
 });
 
+// ---- Neurodiversity preferences (opt-in, reversible and profile-scoped) ----
+let readerFont = "system";
+let bionicReading = false;
+let zenMode = false;
+let lowStimulation = false;
+let readerColumn = "comfortable";
+let readerLineHeight = 1.9;
+let readerLetterSpacing = 0;
+let readerWordSpacing = 0;
+let readingGuide = false;
+let orpGuide = false;
+let flowAutoFollow = true;
+
+function boundedReaderNumber(value, minimum, maximum, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
+}
+
+function setPreferenceToggleUi(button, enabled, { on = "Ligado", off = "Desligado" } = {}) {
+    button.textContent = enabled ? on : off;
+    button.classList.toggle("active", enabled);
+    button.setAttribute("aria-pressed", String(enabled));
+}
+
+function updateReaderPreferenceVisibility() {
+    const flowActive = activeMode === "flow";
+    bionicRow.hidden = !flowActive;
+    flowAutoFollowRow.hidden = !flowActive;
+}
+
+function applyReaderPreferences() {
+    readerView.dataset.readerFont = readerFont;
+    readerView.dataset.readerColumn = readerColumn;
+    readerView.classList.toggle("zen-mode", zenMode);
+    readerView.classList.toggle("low-stimulation", lowStimulation);
+    flowContent.classList.toggle("reading-guide", readingGuide);
+    rsvpStage.classList.toggle("orp-guide", orpGuide);
+    flowContent.style.setProperty("--reader-line-height", String(readerLineHeight));
+    flowContent.style.setProperty("--reader-letter-spacing", `${readerLetterSpacing}em`);
+    flowContent.style.setProperty("--reader-word-spacing", `${readerWordSpacing}em`);
+    readerFontSelect.value = readerFont;
+    readerColumnSelect.value = readerColumn;
+    readerLineHeightSlider.value = String(readerLineHeight);
+    readerLineHeightValue.textContent = readerLineHeight.toFixed(1);
+    readerLetterSpacingSlider.value = String(readerLetterSpacing);
+    readerLetterSpacingValue.textContent = `${readerLetterSpacing.toFixed(2)}em`;
+    readerWordSpacingSlider.value = String(readerWordSpacing);
+    readerWordSpacingValue.textContent = `${readerWordSpacing.toFixed(2)}em`;
+    setPreferenceToggleUi(bionicToggle, bionicReading);
+    setPreferenceToggleUi(readingGuideToggle, readingGuide);
+    setPreferenceToggleUi(lowStimulationToggle, lowStimulation);
+    setPreferenceToggleUi(flowAutoFollowToggle, flowAutoFollow);
+    setPreferenceToggleUi(orpGuideToggle, orpGuide);
+    zenToggle.textContent = zenMode ? "Sair do Zen" : "Zen";
+    zenToggle.classList.toggle("active", zenMode);
+    zenToggle.setAttribute("aria-pressed", String(zenMode));
+    zenToggle.setAttribute("aria-label", zenMode ? "Sair do modo Zen" : "Ativar modo Zen");
+    zenToggle.title = zenMode ? "Sair do modo Zen" : "Ativar modo Zen";
+    if (readerFont === "opendyslexic") {
+        document.fonts?.load("1em OpenDyslexic").catch(() => {
+            // The CSS fallback remains readable if a browser blocks a local font.
+        });
+    }
+    updateReaderPreferenceVisibility();
+}
+
+function loadReaderPreferences() {
+    readerFont = getSetting("readerFont") === "opendyslexic" ? "opendyslexic" : "system";
+    bionicReading = getSetting("bionicReading");
+    zenMode = getSetting("zenMode");
+    lowStimulation = getSetting("lowStimulation");
+    readerColumn = ["narrow", "comfortable", "wide"].includes(getSetting("readerColumn"))
+        ? getSetting("readerColumn") : "comfortable";
+    readerLineHeight = boundedReaderNumber(getSetting("readerLineHeight"), 1.4, 2.4, 1.9);
+    readerLetterSpacing = boundedReaderNumber(getSetting("readerLetterSpacing"), 0, 0.16, 0);
+    readerWordSpacing = boundedReaderNumber(getSetting("readerWordSpacing"), 0, 0.4, 0);
+    readingGuide = getSetting("readingGuide");
+    orpGuide = getSetting("orpGuide");
+    flowAutoFollow = getSetting("flowAutoFollow");
+    applyReaderPreferences();
+}
+
+function rebuildFlowPresentation() {
+    if (activeMode !== "flow" || !flowBuiltForTokens) return;
+    const tokens = engine.getTokens();
+    if (!tokens.length) return;
+    if (flowSpanifyFrameId !== null) {
+        cancelAnimationFrame(flowSpanifyFrameId);
+        flowSpanifyFrameId = null;
+    }
+    flowBuiltForTokens = null;
+    flowBlocks = [];
+    flowHighlightedEls = [];
+    flowContent.replaceChildren();
+    buildFlowContent(tokens);
+    engine.rerender();
+}
+
+zenToggle.addEventListener("click", () => {
+    zenMode = !zenMode;
+    setSetting("zenMode", zenMode);
+    applyReaderPreferences();
+    announce(zenMode ? "Modo Zen ativado." : "Modo Zen desativado.");
+});
+readerFontSelect.addEventListener("change", () => {
+    readerFont = readerFontSelect.value === "opendyslexic" ? "opendyslexic" : "system";
+    setSetting("readerFont", readerFont);
+    applyReaderPreferences();
+});
+readerColumnSelect.addEventListener("change", () => {
+    readerColumn = readerColumnSelect.value;
+    setSetting("readerColumn", readerColumn);
+    applyReaderPreferences();
+});
+readerLineHeightSlider.addEventListener("input", () => {
+    readerLineHeight = boundedReaderNumber(readerLineHeightSlider.value, 1.4, 2.4, 1.9);
+    setSetting("readerLineHeight", readerLineHeight);
+    applyReaderPreferences();
+});
+readerLetterSpacingSlider.addEventListener("input", () => {
+    readerLetterSpacing = boundedReaderNumber(readerLetterSpacingSlider.value, 0, 0.16, 0);
+    setSetting("readerLetterSpacing", readerLetterSpacing);
+    applyReaderPreferences();
+});
+readerWordSpacingSlider.addEventListener("input", () => {
+    readerWordSpacing = boundedReaderNumber(readerWordSpacingSlider.value, 0, 0.4, 0);
+    setSetting("readerWordSpacing", readerWordSpacing);
+    applyReaderPreferences();
+});
+bionicToggle.addEventListener("click", () => {
+    bionicReading = !bionicReading;
+    setSetting("bionicReading", bionicReading);
+    applyReaderPreferences();
+    rebuildFlowPresentation();
+});
+readingGuideToggle.addEventListener("click", () => {
+    readingGuide = !readingGuide;
+    setSetting("readingGuide", readingGuide);
+    applyReaderPreferences();
+});
+lowStimulationToggle.addEventListener("click", () => {
+    lowStimulation = !lowStimulation;
+    setSetting("lowStimulation", lowStimulation);
+    applyReaderPreferences();
+});
+orpGuideToggle.addEventListener("click", () => {
+    orpGuide = !orpGuide;
+    setSetting("orpGuide", orpGuide);
+    applyReaderPreferences();
+});
+flowAutoFollowToggle.addEventListener("click", () => {
+    flowAutoFollow = !flowAutoFollow;
+    setSetting("flowAutoFollow", flowAutoFollow);
+    flowFollowMode = flowAutoFollow;
+    flowBackToPositionBtn.hidden = flowAutoFollow;
+    if (flowAutoFollow) scrollFlowToCurrentWord("auto");
+    applyReaderPreferences();
+});
+
 function escapeHtml(str) {
     return str
         .replace(/&/g, "&amp;")
@@ -1130,13 +1350,36 @@ function spanifyBlock(bIdx) {
     for (let i = blk.startIdx; i < endIdx; i++) {
         const span = document.createElement("span");
         span.className = "flow-word";
-        span.textContent = tokens[i].text;
+        if (bionicReading) {
+            appendBionicFlowWord(span, tokens[i].text);
+        } else {
+            span.textContent = tokens[i].text;
+        }
         span.dataset.idx = i;
         frag.appendChild(span);
         frag.appendChild(document.createTextNode(" "));
     }
     blk.el.replaceChildren(frag);
     blk.spanified = true;
+}
+
+// Keeps the full word as one screen-reader-only string while the visible
+// treatment is aria-hidden. This prevents visual Bionic Reading markup from
+// causing assistive technology to spell a word in separately announced parts.
+function appendBionicFlowWord(container, text) {
+    const characters = Array.from(text);
+    const anchorEnd = Math.max(1, Math.ceil(characters.length / 2));
+    const visual = document.createElement("span");
+    visual.className = "bionic-visual";
+    visual.setAttribute("aria-hidden", "true");
+    const anchor = document.createElement("strong");
+    anchor.className = "bionic-anchor";
+    anchor.textContent = characters.slice(0, anchorEnd).join("");
+    visual.append(anchor, document.createTextNode(characters.slice(anchorEnd).join("")));
+    const accessibleText = document.createElement("span");
+    accessibleText.className = "sr-only";
+    accessibleText.textContent = text;
+    container.append(visual, accessibleText);
 }
 
 // Binary search: which block owns a given global token index.
@@ -1267,7 +1510,7 @@ function resetFlowState() {
     flowBuiltForTokens = null;
     flowBlocks = [];
     flowHighlightedEls = [];
-    flowFollowMode = true;
+    flowFollowMode = flowAutoFollow;
     flowAutoScrolling = false;
     if (flowSpanifyFrameId !== null) {
         cancelAnimationFrame(flowSpanifyFrameId);
@@ -1816,6 +2059,7 @@ function switchMode(mode, { push = true } = {}) {
     loadModeSliders();
     updateOrpVisibility();
     updateSnapBackVisibility();
+    applyReaderPreferences();
     if (mode === "flow") {
         ensureFlowBuilt();
     }
@@ -2538,6 +2782,7 @@ async function showReader(id, push = true, mode = "focus") {
     loadModeSliders();
     updateOrpVisibility();
     updateSnapBackVisibility();
+    applyReaderPreferences();
 
     resetFlowState(); // new document — clear Flow's cached spans, scroll and follow state
     engine.load(doc.raw_text);

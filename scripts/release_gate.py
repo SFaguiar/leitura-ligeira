@@ -63,6 +63,11 @@ def build_steps(*, include_docker: bool = True) -> list[GateStep]:
             60,
         ),
         GateStep(
+            "frontend-neurodiversity",
+            (node, "tests/frontend_neurodiversity_test.mjs"),
+            60,
+        ),
+        GateStep(
             "frontend-axe",
             (node, "tests/frontend_axe_test.mjs", python),
             120,

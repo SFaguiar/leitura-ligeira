@@ -83,10 +83,32 @@ class UserSettingsOut(BaseModel):
     theme: str
     collect_stats: bool
     skin: Literal["library", "odysseus"]
+    reader_font: Literal["system", "opendyslexic"]
+    bionic_reading: bool
+    zen_mode: bool
+    low_stimulation: bool
+    reader_column: Literal["narrow", "comfortable", "wide"]
+    reader_line_height: float
+    reader_letter_spacing: float
+    reader_word_spacing: float
+    reading_guide: bool
+    orp_guide: bool
+    flow_auto_follow: bool
 
 
 class UserSettingsUpdate(StrictRequest):
     skin: Literal["library", "odysseus"] | None = None
+    reader_font: Literal["system", "opendyslexic"] | None = None
+    bionic_reading: bool | None = None
+    zen_mode: bool | None = None
+    low_stimulation: bool | None = None
+    reader_column: Literal["narrow", "comfortable", "wide"] | None = None
+    reader_line_height: float | None = Field(default=None, ge=1.4, le=2.4)
+    reader_letter_spacing: float | None = Field(default=None, ge=0, le=0.16)
+    reader_word_spacing: float | None = Field(default=None, ge=0, le=0.4)
+    reading_guide: bool | None = None
+    orp_guide: bool | None = None
+    flow_auto_follow: bool | None = None
     active_mode: Literal["focus", "flow"] | None = None
     wpm_focus: int | None = Field(default=None, ge=100, le=1000)
     wpm_flow: int | None = Field(default=None, ge=100, le=1000)

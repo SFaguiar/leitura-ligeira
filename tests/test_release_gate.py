@@ -42,6 +42,7 @@ class ReleaseGateTests(unittest.TestCase):
             "frontend-contract",
             "frontend-accessibility",
             "frontend-screenreader",
+            "frontend-neurodiversity",
             "frontend-axe",
             "tts-4x-soak",
             "git-whitespace",

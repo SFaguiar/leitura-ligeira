@@ -3214,3 +3214,226 @@ html[data-legibility="high"] .health-badge.not_required {
         box-shadow: 0 0 0 4px Canvas;
     }
 }
+
+/* R11 — user-owned reading preferences. OpenDyslexic is bundled locally so
+   choosing it never sends reading metadata to a third-party font service. */
+@font-face {
+    font-family: "OpenDyslexic";
+    src: url("/static/fonts/OpenDyslexic-Regular.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "OpenDyslexic";
+    src: url("/static/fonts/OpenDyslexic-Bold.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 700 900;
+    font-display: swap;
+}
+
+.reader-preferences {
+    min-width: 0;
+    margin: 0;
+    padding: clamp(0.85rem, 3vw, 1.2rem);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 10px);
+    background: color-mix(in srgb, var(--card-bg) 90%, var(--accent-soft));
+}
+
+.reader-preferences legend {
+    padding: 0 0.35rem;
+    color: var(--fg);
+    font-weight: 700;
+}
+
+.reader-preferences-help {
+    margin: 0 0 0.85rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.reader-preferences-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+
+.reader-preferences-grid select {
+    min-height: 44px;
+    padding: 0.45rem 0.6rem;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    font: inherit;
+}
+
+.reader-preferences-toggles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem 1rem;
+    margin-top: 0.85rem;
+}
+
+.zen-toggle.active {
+    color: #fff;
+    border-color: var(--accent);
+    background: var(--accent);
+}
+
+#reader-view[data-reader-font="opendyslexic"] .rsvp-display,
+#reader-view[data-reader-font="opendyslexic"] .flow-content {
+    font-family: "OpenDyslexic", Arial, sans-serif;
+    letter-spacing: normal;
+}
+
+.flow-content {
+    line-height: var(--reader-line-height, 2.05);
+    letter-spacing: var(--reader-letter-spacing, normal);
+    word-spacing: var(--reader-word-spacing, normal);
+}
+
+#reader-view[data-reader-column="narrow"] .flow-paragraph { max-width: 46ch; }
+#reader-view[data-reader-column="comfortable"] .flow-paragraph { max-width: 62ch; }
+#reader-view[data-reader-column="wide"] .flow-paragraph { max-width: 78ch; }
+
+.bionic-visual {
+    display: inline;
+}
+
+.bionic-anchor {
+    font-weight: 800;
+}
+
+.flow-content.reading-guide {
+    background-image: linear-gradient(
+        to bottom,
+        transparent calc(100% - 2px),
+        color-mix(in srgb, var(--accent) 34%, transparent) calc(100% - 2px),
+        color-mix(in srgb, var(--accent) 34%, transparent) 100%
+    );
+    background-size: 100% calc(var(--reader-line-height, 2.05) * 1em);
+    background-position: 0 1.1em;
+}
+
+.rsvp-stage.orp-guide {
+    position: relative;
+}
+
+.rsvp-stage.orp-guide::before {
+    content: "";
+    position: absolute;
+    top: 18%;
+    bottom: 18%;
+    left: 50%;
+    width: 2px;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+    pointer-events: none;
+}
+
+.rsvp-stage.orp-guide::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: calc(50% - 10px);
+    width: 20px;
+    height: 20px;
+    border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.rsvp-stage.orp-guide .rsvp-display {
+    position: relative;
+    z-index: 1;
+}
+
+#reader-view.low-stimulation .rsvp-stage,
+#reader-view.low-stimulation .flow-region,
+#reader-view.low-stimulation .sliders,
+#reader-view.low-stimulation .reader-preferences,
+#reader-view.low-stimulation .transport .icon-btn {
+    background-image: none;
+    box-shadow: none;
+}
+
+#reader-view.low-stimulation .flow-word.flow-current,
+#reader-view.low-stimulation .tts-toggle-btn.active,
+#reader-view.low-stimulation .zen-toggle.active {
+    box-shadow: none;
+}
+
+#reader-view.low-stimulation .progress-fill {
+    transition: none;
+}
+
+#reader-view.zen-mode .reader-title,
+#reader-view.zen-mode .toc-wrapper,
+#reader-view.zen-mode .mode-switch,
+#reader-view.zen-mode .scrubber,
+#reader-view.zen-mode .reading-progress-info,
+#reader-view.zen-mode .transport .icon-btn:not(.play-btn),
+#reader-view.zen-mode .tts-toolbar,
+#reader-view.zen-mode .sliders,
+#reader-view.zen-mode .flow-back-btn {
+    display: none;
+}
+
+#reader-view.zen-mode .reader-topbar {
+    justify-content: space-between;
+}
+
+#reader-view.zen-mode .controls {
+    gap: 0;
+}
+
+@media (max-width: 760px) {
+    .reader-preferences-grid,
+    .reader-preferences-toggles {
+        grid-template-columns: 1fr;
+    }
+
+    .reader-preferences .toggle-row .icon-btn {
+        min-height: 44px;
+    }
+
+    #reader-view[data-reader-column="wide"] .flow-paragraph,
+    #reader-view[data-reader-column="comfortable"] .flow-paragraph {
+        max-width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rsvp-stage.orp-guide::before,
+    .rsvp-stage.orp-guide::after,
+    .flow-content.reading-guide {
+        transition: none;
+        animation: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .flow-content.reading-guide {
+        background-image: none;
+        outline: 1px solid CanvasText;
+    }
+
+    .rsvp-stage.orp-guide::before,
+    .rsvp-stage.orp-guide::after {
+        background: CanvasText;
+        border-color: CanvasText;
+    }
+}
+/* Odysseus uses a light coral action color; dark text preserves AA contrast. */
+html[data-skin="odysseus"] .toggle-row .icon-btn.active,
+html[data-skin="odysseus"] .zen-toggle.active {
+    color: #101214;
+}
+
+html[data-skin="odysseus"] .zen-toggle.active {
+    border-color: var(--accent);
+    background: var(--accent);
+}
